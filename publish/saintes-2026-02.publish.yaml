@@ -1,0 +1,51 @@
+event: saintes-2026-02
+title: Saintes flood, February 2026
+start: '2026-02-01'
+end: '2026-03-01'
+compare:
+- s1-before
+- s1-after
+layers:
+- slug: flood-extent
+  file: ../outputs/saintes-2026-02/flood-extent.tif
+  role: result
+  kind: raster
+  title: Flood extent
+  shown: true
+  categories:
+  - value: 0
+    color: '#000000'
+    label: No flood
+    transparent: true
+  - value: 1
+    color: '#1f78b4'
+    label: Flooded
+- slug: s1-before
+  file: ../outputs/saintes-2026-02/s1-before.tif
+  role: imagery
+  kind: raster
+  title: Sentinel-1 before the flood
+  shown: false
+  acquired: '2026-01-30'
+  attribution: Contains modified Copernicus Sentinel data 2026
+  rgb: &id001
+    bands:
+    - 1
+    - 2
+    - 3
+    ranges:
+    - - -20.0
+      - -3.0
+    - - -26.0
+      - -9.0
+    - - 2.0
+      - 12.0
+- slug: s1-after
+  file: ../outputs/saintes-2026-02/s1-after.tif
+  role: imagery
+  kind: raster
+  title: Sentinel-1 at the flood peak
+  shown: false
+  acquired: '2026-02-23'
+  attribution: Contains modified Copernicus Sentinel data 2026
+  rgb: *id001
