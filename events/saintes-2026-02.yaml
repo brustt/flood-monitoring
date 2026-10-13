@@ -22,5 +22,6 @@ series:
 # Speckle filters on linear power: Lee (spatial) then Quegan (temporal).
 # enl 4.4 is eo-pipe's default (Sentinel-1 IW GRDH).
 despeckle:
-  window_size: 7
+  lee_window: 7
+  quegan_window: 7
   enl: 4.4

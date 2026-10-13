@@ -37,7 +37,8 @@ class Series:
 class Despeckle:
     """Lee (spatial) and Quegan (temporal) filter settings; eo-pipe's defaults."""
 
-    window_size: int = 7
+    lee_window: int = 7
+    quegan_window: int = 7
     enl: float = 4.4
 
 
@@ -69,7 +70,8 @@ def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
     despeckle = raw.get("despeckle", {})
     return EventConfig(
         despeckle=Despeckle(
-            window_size=int(despeckle.get("window_size", Despeckle.window_size)),
+            lee_window=int(despeckle.get("lee_window", Despeckle.lee_window)),
+            quegan_window=int(despeckle.get("quegan_window", Despeckle.quegan_window)),
             enl=float(despeckle.get("enl", Despeckle.enl)),
         ),
         project=raw["project"],

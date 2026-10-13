@@ -25,8 +25,8 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
     # Inputs stay in linear power: the Cube is never converted to dB before this point.
     ctx = (
         PipelineComposition(workspace=work)
-        .add_step("lee_filter", ParallelBatch(), window_size=settings.window_size, enl=settings.enl)
-        .add_step("quegan_filter", ParallelBatch(), window_size=settings.window_size)
+        .add_step("lee_filter", ParallelBatch(), window_size=settings.lee_window, enl=settings.enl)
+        .add_step("quegan_filter", ParallelBatch(), window_size=settings.quegan_window)
         .run([paths.cube], save_intermediate=True)
     )
     shutil.move(ctx.inputs[0], paths.filtered_cube)
