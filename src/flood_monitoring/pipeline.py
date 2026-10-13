@@ -1,6 +1,6 @@
 """Run the detection pipeline of an Event end to end: download, stack, despeckle, detect.
 
-``python -m flood_monitoring.pipeline [event] [--force]``; the Event defaults to saintes-2026-02.
+``uv run src/flood_monitoring/pipeline.py [event] [--force]`` (or ``python -m flood_monitoring.pipeline``); the Event defaults to saintes-2026-02.
 Everything comes from ``events/<event>.yaml``. Stages whose output exists are skipped, and the
 download is skipped without a search when Subsets are already on disk.
 """
@@ -11,8 +11,8 @@ import argparse
 import sys
 from types import ModuleType
 
-from .config import load_event_config
-from .paths import EventPaths, event_paths
+from flood_monitoring.config import load_event_config
+from flood_monitoring.paths import EventPaths, event_paths
 
 DEFAULT_EVENT = "saintes-2026-02"
 # In processing order; "detect" is the event stage then the flood-extent stage.
@@ -20,7 +20,7 @@ STAGE_NAMES = ("download", "stack", "despeckle", "event", "flood-extent")
 
 
 def load_stages() -> dict[str, ModuleType]:
-    from . import despeckle, download, event, flood_extent, stack
+    from flood_monitoring import despeckle, download, event, flood_extent, stack
 
     return {
         "download": download,
