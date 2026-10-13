@@ -71,7 +71,7 @@ def test_main_unknown_event_returns_1(capsys):
     assert "no config for Event" in capsys.readouterr().err
 
 
-def test_main_defaults_to_saintes_and_reports_unbuilt_stage(monkeypatch, tmp_path, capsys):
+def test_main_defaults_to_saintes_and_reports_missing_input(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("FLOOD_MONITORING_DATA_ROOT", str(tmp_path))
     assert cli.main(["run", "--stage", "export"]) == 1
-    assert "export stage is not built yet" in capsys.readouterr().err
+    assert "run the flood-extent stage first" in capsys.readouterr().err
