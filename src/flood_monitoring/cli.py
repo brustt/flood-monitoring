@@ -6,6 +6,7 @@ import argparse
 import sys
 
 from . import composite, despeckle, download, event, export, flood_extent, stack
+from ._env import ensure_clean_environment
 from .config import load_event_config
 from .paths import event_paths
 
@@ -22,6 +23,7 @@ STAGES = {
 
 
 def main(argv: list[str] | None = None) -> int:
+    ensure_clean_environment(sys.argv[1:] if argv is None else argv)
     ap = argparse.ArgumentParser(prog="flood-monitoring")
     sub = ap.add_subparsers(dest="cmd", required=True)
     rp = sub.add_parser("run", help="run the pipeline of an Event, skipping stages already done")
