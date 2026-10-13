@@ -35,7 +35,7 @@ The Post-event Acquisition with the largest (Water Mask − Permanent Water) are
 
 Result for Saintes (−15 dB, sieve 20): flooded area 02-05 1.98 %, 02-11 1.81 %, 02-17 2.89 %, **02-23 3.30 %**, 03-01 2.78 % → **Peak 2026-02-23**. Flood Extent = 3.5 % of the Area of Interest (≈ 7.8 km²).
 
-**Disagreement to check with the owner:** the issue expected a Peak around 2026-02-17. The rules give 2026-02-23 for every threshold (−14 … −17 dB) and sieve size (5 … 50) tried; 02-17 is consistently second. Acquisitions are 6 days apart, so the flood peak itself may fall near 02-17 with the water still large on 02-23; the pipeline's Peak is "largest area", as defined in `CONTEXT.md`. Maps for the owner: Before 01-30 shows only the river and a narrow dark band in the north; 02-05 to 03-01 show the Charente valley flooded, widest on 02-23.
+**Confirmed by the owner: the Peak is 2026-02-23.** The issue had expected about 2026-02-17, but the rules give 02-23 for every threshold (−14 … −17 dB) and sieve size (5 … 50) tried, with 02-17 second. The Peak stays "largest area", as defined in `CONTEXT.md`. The maps show the Charente valley flooded from 02-05 to 03-01, widest on 02-23.
 
 ## Prototype scripts
 

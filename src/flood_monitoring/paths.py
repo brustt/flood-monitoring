@@ -51,6 +51,24 @@ class EventPaths:
         return self.data_root / "processed" / self.event
 
     @property
+    def summary(self) -> Path:
+        """Event Start, Peak, thresholds and areas, as JSON."""
+        return self.processed / "summary.json"
+
+    @property
+    def water_masks(self) -> Path:
+        """One sieved Water Mask GeoTIFF per Post-event Acquisition, ``<yyyy-mm-dd>.tif``."""
+        return self.processed / "water-masks"
+
+    @property
+    def permanent_water(self) -> Path:
+        return self.processed / "permanent-water.tif"
+
+    @property
+    def flood_extent(self) -> Path:
+        return self.processed / "flood-extent.tif"
+
+    @property
     def outputs(self) -> Path:
         """Final Layers, in the repo and git-ignored."""
         return self.repo_root / "outputs" / self.event

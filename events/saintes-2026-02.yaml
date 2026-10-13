@@ -25,3 +25,13 @@ despeckle:
   lee_window: 7
   quegan_window: 7
   enl: 4.4
+
+# Detection rules, see docs/detection-rules.md. These are the defaults.
+detection:
+  min_baseline: 8
+  drop_db: 4.0
+  event_share: 0.01
+  water_db: -15.0
+  permanent_fraction: 0.5
+  sieve_size: 20
+  sieve_connectedness: 8
