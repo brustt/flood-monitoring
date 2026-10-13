@@ -34,12 +34,22 @@ class Series:
 
 
 @dataclass(frozen=True)
+class Despeckle:
+    """Lee (spatial) and Quegan (temporal) filter settings; eo-pipe's defaults."""
+
+    lee_window: int = 7
+    quegan_window: int = 7
+    enl: float = 4.4
+
+
+@dataclass(frozen=True)
 class EventConfig:
     project: str
     event: str
     area_of_interest: tuple[float, float, float, float]
     window: Window
     series: Series
+    despeckle: Despeckle = Despeckle()
 
 
 def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
@@ -57,7 +67,13 @@ def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
         raise ValueError(f"{path}: area_of_interest must be [west, south, east, north]")
 
     series = raw["series"]
+    despeckle = raw.get("despeckle", {})
     return EventConfig(
+        despeckle=Despeckle(
+            lee_window=int(despeckle.get("lee_window", Despeckle.lee_window)),
+            quegan_window=int(despeckle.get("quegan_window", Despeckle.quegan_window)),
+            enl=float(despeckle.get("enl", Despeckle.enl)),
+        ),
         project=raw["project"],
         event=raw["event"],
         area_of_interest=(west, south, east, north),

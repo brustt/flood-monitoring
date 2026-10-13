@@ -36,6 +36,16 @@ class EventPaths:
         return self.data_root / "interim" / self.event
 
     @property
+    def cube(self) -> Path:
+        """The Cube: all Acquisitions stacked, VV and VH, linear power."""
+        return self.interim / "cube.nc"
+
+    @property
+    def filtered_cube(self) -> Path:
+        """The Cube after Lee then Quegan."""
+        return self.interim / "filtered-cube.nc"
+
+    @property
     def processed(self) -> Path:
         """Event Start, Water Masks, Flood Extent and Composites before export."""
         return self.data_root / "processed" / self.event

@@ -18,3 +18,10 @@ series:
   instrument_mode: IW
   relative_orbit: 8
   assets: [vv, vh]
+
+# Speckle filters on linear power: Lee (spatial) then Quegan (temporal).
+# enl 4.4 is eo-pipe's default (Sentinel-1 IW GRDH).
+despeckle:
+  lee_window: 7
+  quegan_window: 7
+  enl: 4.4
