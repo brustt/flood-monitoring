@@ -1,0 +1,47 @@
+[project]
+name = "flood-monitoring"
+version = "0.1.0"
+description = "Maps the extent of a flood from a Sentinel-1 time series and prepares it for the brustt.xyz Platform"
+readme = "README.md"
+authors = [
+    { name = "brustt", email = "martin.dzr@protonmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "eo-pipe",
+    "eo-stac",
+    "platform-publish",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+flood-monitoring = "flood_monitoring.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+# eo-pipe pins the gdal Python bindings, which compile against the system
+# GDAL C library found through gdal-config on PATH. numpy must be present at
+# build time or the bindings are built without gdal_array.
+[tool.uv.extra-build-dependencies]
+gdal = ["setuptools", "numpy"]
+
+# GDAL 3.12.2 lives in /usr/local, next to the distribution's older libgdal.
+# The system Python puts /usr/lib/x86_64-linux-gnu first on the link line, so
+# without this the bindings link against the wrong library and fail to import.
+[tool.uv.extra-build-variables]
+gdal = { LDFLAGS = "-L/usr/local/lib -Wl,-rpath,/usr/local/lib" }
+
+[tool.uv.sources]
+eo-pipe = { path = "../eo-pipe", editable = true }
+eo-stac = { path = "../eo-stac", editable = true }
+platform-publish = { git = "https://github.com/brustt/platform-publish", tag = "v0.1.0" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["uv_build>=0.10.7,<0.11.0"]
+build-backend = "uv_build"

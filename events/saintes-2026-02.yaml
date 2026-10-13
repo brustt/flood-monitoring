@@ -1,0 +1,20 @@
+project: flood-monitoring
+event: saintes-2026-02
+
+# West, south, east, north in EPSG:4326.
+area_of_interest: [-0.765953, 45.754828, -0.548630, 45.863477]
+
+# Calendar period of the flood shown on the Platform. Set by hand; it is not
+# the Event Start, which the pipeline detects from the Series.
+window:
+  start: 2026-02-01
+  end: 2026-03-01
+
+series:
+  collection: sentinel-1-rtc
+  start: 2025-09-01
+  end: 2026-03-01
+  orbit_state: descending
+  instrument_mode: IW
+  relative_orbit: 8
+  assets: [vv, vh]
