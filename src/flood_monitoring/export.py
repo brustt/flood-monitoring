@@ -66,7 +66,7 @@ def event_manifest(config: EventConfig, summary: dict, layers_dir: str | None = 
             "shown": False,
             "acquired": day,
             "attribution": COPERNICUS.format(year=day[:4]),
-            "rgb": rgb,
+            "rgb": {"bands": list(rgb["bands"]), "ranges": [list(x) for x in rgb["ranges"]]},
         }
 
     return {
@@ -110,6 +110,11 @@ def run(
     if not paths.summary.exists():
         raise FileNotFoundError(f"{paths.summary} is missing; run the flood-extent stage first")
     summary = json.loads(paths.summary.read_text())
+    if "before" not in summary or "peak" not in summary:
+        raise FileNotFoundError(f"{paths.summary} has no before/peak dates; run the flood-extent stage first")
+    project_yaml = paths.publish / "project.yaml"
+    if not project_yaml.exists():
+        raise FileNotFoundError(f"{project_yaml} is missing; write it once by hand")
 
     paths.outputs.mkdir(parents=True, exist_ok=True)
     for slug, (source, _) in sources.items():
@@ -120,7 +125,6 @@ def run(
             write_cog(source, target, categorical=False)
         print(f"{slug}: {target} ({target.stat().st_size / 1e6:.2f} MB)")
 
-    project_yaml = paths.publish / "project.yaml"
     event_yaml = paths.publish / f"{config.event}.publish.yaml"
     layers_dir = Path(os.path.relpath(paths.outputs, paths.publish)).as_posix()
     manifest = event_manifest(config, summary, layers_dir)
