@@ -43,6 +43,19 @@ class Despeckle:
 
 
 @dataclass(frozen=True)
+class Detection:
+    """Detection rules; the values settled in docs/detection-rules.md."""
+
+    min_baseline: int = 8  # earlier Acquisitions needed before a candidate Event Start
+    drop_db: float = 4.0  # a pixel is changed when its Drop exceeds this
+    event_share: float = 0.01  # Event Start: first date with more changed pixels than this
+    water_db: float = -15.0  # Water Mask: VV below this
+    permanent_fraction: float = 0.5  # Permanent Water: water in more than this share of pre-event dates
+    sieve_size: int = 20  # eo-pipe sieve: minimum region size, pixels
+    sieve_connectedness: int = 8
+
+
+@dataclass(frozen=True)
 class EventConfig:
     project: str
     event: str
@@ -50,6 +63,7 @@ class EventConfig:
     window: Window
     series: Series
     despeckle: Despeckle = Despeckle()
+    detection: Detection = Detection()
 
 
 def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
@@ -68,7 +82,19 @@ def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
 
     series = raw["series"]
     despeckle = raw.get("despeckle", {})
+    det = raw.get("detection", {})
+    defaults = Detection()
+    detection = Detection(
+        **{
+            name: type(getattr(defaults, name))(det.get(name, getattr(defaults, name)))
+            for name in Detection.__dataclass_fields__
+        }
+    )
+    unknown = set(det) - set(Detection.__dataclass_fields__)
+    if unknown:
+        raise ValueError(f"{path}: unknown detection setting(s) {sorted(unknown)}")
     return EventConfig(
+        detection=detection,
         despeckle=Despeckle(
             lee_window=int(despeckle.get("lee_window", Despeckle.lee_window)),
             quegan_window=int(despeckle.get("quegan_window", Despeckle.quegan_window)),
