@@ -56,6 +56,21 @@ class Detection:
 
 
 @dataclass(frozen=True)
+class CompositeRanges:
+    """Value range in dB stretched to 0-255 for each Composite band (red VV, green VH, blue VV minus VH).
+
+    The same ranges go into the manifest's ``rgb`` hint.
+    """
+
+    vv: tuple[float, float] = (-20.0, -3.0)
+    vh: tuple[float, float] = (-26.0, -9.0)
+    vv_minus_vh: tuple[float, float] = (2.0, 12.0)
+
+    def as_dict(self) -> dict[str, tuple[float, float]]:
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
+
+
+@dataclass(frozen=True)
 class EventConfig:
     project: str
     event: str
@@ -64,6 +79,7 @@ class EventConfig:
     series: Series
     despeckle: Despeckle = Despeckle()
     detection: Detection = Detection()
+    composite: CompositeRanges = CompositeRanges()
 
 
 def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
@@ -95,6 +111,7 @@ def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
         raise ValueError(f"{path}: unknown detection setting(s) {sorted(unknown)}")
     return EventConfig(
         detection=detection,
+        composite=_composite_ranges(raw.get("composite", {}), path),
         despeckle=Despeckle(
             lee_window=int(despeckle.get("lee_window", Despeckle.lee_window)),
             quegan_window=int(despeckle.get("quegan_window", Despeckle.quegan_window)),
@@ -118,3 +135,16 @@ def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
 
 def _as_date(value: date | str) -> date:
     return value if isinstance(value, date) else date.fromisoformat(value)
+
+
+def _composite_ranges(raw: dict, path: Path) -> CompositeRanges:
+    unknown = set(raw) - set(CompositeRanges.__dataclass_fields__)
+    if unknown:
+        raise ValueError(f"{path}: unknown composite band(s) {sorted(unknown)}")
+    ranges = {}
+    for name, value in raw.items():
+        low, high = (float(v) for v in value)
+        if not low < high:
+            raise ValueError(f"{path}: composite {name} range must be [low, high] with low < high")
+        ranges[name] = (low, high)
+    return CompositeRanges(**ranges)

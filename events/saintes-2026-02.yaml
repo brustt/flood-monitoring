@@ -35,3 +35,10 @@ detection:
   permanent_fraction: 0.5
   sieve_size: 20
   sieve_connectedness: 8
+
+# Composite value ranges in dB, stretched to 0-255 as red VV, green VH, blue VV minus VH.
+# Chosen by looking at the Saintes Composites; also used for the manifest's rgb hint.
+composite:
+  vv: [-20, -3]
+  vh: [-26, -9]
+  vv_minus_vh: [2, 12]
