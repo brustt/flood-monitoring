@@ -69,6 +69,16 @@ class EventPaths:
         return self.processed / "flood-extent.tif"
 
     @property
+    def before_composite(self) -> Path:
+        """Composite of the last Acquisition before the Event Start."""
+        return self.processed / "before-composite.tif"
+
+    @property
+    def after_composite(self) -> Path:
+        """Composite of the Peak."""
+        return self.processed / "after-composite.tif"
+
+    @property
     def outputs(self) -> Path:
         """Final Layers, in the repo and git-ignored."""
         return self.repo_root / "outputs" / self.event

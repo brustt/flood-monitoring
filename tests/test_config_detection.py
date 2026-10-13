@@ -37,3 +37,15 @@ def test_detection_override(tmp_path):
 def test_unknown_detection_setting(tmp_path):
     with pytest.raises(ValueError, match="unknown detection setting.*otsu"):
         load(tmp_path, "detection:\n  otsu: true\n")
+
+
+def test_composite_ranges_default_and_override(tmp_path):
+    assert load(tmp_path).composite.vv == (-20.0, -3.0)
+    cfg = load(tmp_path, "composite:\n  vh: [-30, -10]\n")
+    assert cfg.composite.vh == (-30.0, -10.0)
+    assert cfg.composite.as_dict()["vv"] == (-20.0, -3.0)
+
+
+def test_composite_range_must_be_low_then_high(tmp_path):
+    with pytest.raises(ValueError, match="vv"):
+        load(tmp_path, "composite:\n  vv: [0, -5]\n")
