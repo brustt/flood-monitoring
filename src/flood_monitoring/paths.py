@@ -60,6 +60,15 @@ class EventPaths:
         """One sieved Water Mask GeoTIFF per Post-event Acquisition, ``<yyyy-mm-dd>.tif``."""
         return self.processed / "water-masks"
 
+    def water_mask(self, day: str) -> Path:
+        """Water Mask of the Post-event Acquisition of *day* (``yyyy-mm-dd``)."""
+        return self.water_masks / f"{day}.tif"
+
+    @property
+    def sieve_work(self) -> Path:
+        """Scratch folder of the sieve, removed once the Water Masks are sieved."""
+        return self.processed / "_sieve"
+
     @property
     def permanent_water(self) -> Path:
         return self.processed / "permanent-water.tif"
