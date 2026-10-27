@@ -19,6 +19,7 @@ from .paths import EventPaths
 
 FLOOD_EXTENT_NODATA = 255
 FLOOD_COLOR = "#1f78b4"
+ORBIT_COLORS = ("#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#a65628")
 COPERNICUS = "Contains modified Copernicus Sentinel data {year}"
 
 
@@ -50,6 +51,26 @@ def event_title(event: str) -> str:
     return f"{' '.join(place).title()} flood, {date(int(year), int(month), 1):%B %Y}"
 
 
+def orbit_map_layer(series: list[dict], layers_dir: str) -> dict:
+    """Hidden categorical Layer: which relative orbit each Composite pixel comes from, and its dates."""
+    return {
+        "slug": "orbit-map",
+        "file": f"{layers_dir}/orbit-map.tif",
+        "role": "result",
+        "kind": "raster",
+        "title": "Source orbit of the Sentinel-1 pictures",
+        "shown": False,
+        "categories": [
+            {
+                "value": s["rank"],
+                "color": ORBIT_COLORS[(s["rank"] - 1) % len(ORBIT_COLORS)],
+                "label": f"orbit {s['relative_orbit']}: before {s['before']}, after {s['peak']}",
+            }
+            for s in series
+        ],
+    }
+
+
 def event_manifest(config: EventConfig, summary: dict, layers_dir: str | None = None) -> dict:
     """The ``<event>.publish.yaml`` content. *layers_dir* is where the COGs are, relative to the manifest."""
     layers_dir = layers_dir or f"../outputs/{config.event}"
@@ -69,28 +90,31 @@ def event_manifest(config: EventConfig, summary: dict, layers_dir: str | None = 
             "rgb": {"bands": list(rgb["bands"]), "ranges": [list(x) for x in rgb["ranges"]]},
         }
 
+    layers = [
+        {
+            "slug": "flood-extent",
+            "file": f"{layers_dir}/flood-extent.tif",
+            "role": "result",
+            "kind": "raster",
+            "title": "Flood extent",
+            "shown": True,
+            "categories": [
+                {"value": 0, "color": "#000000", "label": "No flood", "transparent": True},
+                {"value": 1, "color": FLOOD_COLOR, "label": "Flooded"},
+            ],
+        },
+        imagery("s1-before", "Sentinel-1 before the flood", summary["before"]),
+        imagery("s1-after", "Sentinel-1 at the flood peak", summary["peak"]),
+    ]
+    if "series" in summary:
+        layers.append(orbit_map_layer(summary["series"], layers_dir))
     return {
         "event": config.event,
         "title": event_title(config.event),
         "start": config.window.start.isoformat(),
         "end": config.window.end.isoformat(),
         "compare": ["s1-before", "s1-after"],
-        "layers": [
-            {
-                "slug": "flood-extent",
-                "file": f"{layers_dir}/flood-extent.tif",
-                "role": "result",
-                "kind": "raster",
-                "title": "Flood extent",
-                "shown": True,
-                "categories": [
-                    {"value": 0, "color": "#000000", "label": "No flood", "transparent": True},
-                    {"value": 1, "color": FLOOD_COLOR, "label": "Flooded"},
-                ],
-            },
-            imagery("s1-before", "Sentinel-1 before the flood", summary["before"]),
-            imagery("s1-after", "Sentinel-1 at the flood peak", summary["peak"]),
-        ],
+        "layers": layers,
     }
 
 
@@ -116,10 +140,17 @@ def run(
     if not project_yaml.exists():
         raise FileNotFoundError(f"{project_yaml} is missing; write it once by hand")
 
+    if "series" in summary:
+        if not paths.orbit_map.exists():
+            raise FileNotFoundError(f"{paths.orbit_map} is missing; run the merge stage first")
+        sources["orbit-map"] = (paths.orbit_map, "merge")
+
     paths.outputs.mkdir(parents=True, exist_ok=True)
     for slug, (source, _) in sources.items():
         target = paths.outputs / f"{slug}.tif"
-        if slug == "flood-extent":
+        if slug == "orbit-map":
+            write_cog(source, target, categorical=True)
+        elif slug == "flood-extent":
             write_cog(source, target, categorical=True, nodata=FLOOD_EXTENT_NODATA)
         else:
             write_cog(source, target, categorical=False)

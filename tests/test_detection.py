@@ -81,3 +81,13 @@ def test_flood_extent_and_peak():
     assert extent[0].tolist() == [False, True, True, True, False]
     i, areas = d.peak(masks, perm)
     assert i == 1 and areas == [1, 3, 2]
+
+
+def test_drop_share_counts_only_pixels_inside_the_area_of_interest():
+    from flood_monitoring.detection import drop_share
+
+    db = np.zeros((3, 1, 4), dtype="float32")
+    db[2, 0, :2] = -10  # a Drop of 10 dB on two pixels
+    inside = np.array([[True, False, True, True]])
+    assert drop_share(db, 2, 4.0) == 0.5
+    assert drop_share(db, 2, 4.0, inside) == pytest.approx(1 / 3)

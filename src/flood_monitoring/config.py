@@ -72,6 +72,14 @@ class CompositeRanges:
 
 
 @dataclass(frozen=True)
+class EventGrid:
+    """Grid of the global Layers. *crs* None means the CRS of the first Series (in config order)."""
+
+    crs: str | None = None
+    pixel_size: float = 10.0  # metres
+
+
+@dataclass(frozen=True)
 class EventConfig:
     project: str
     event: str
@@ -81,6 +89,7 @@ class EventConfig:
     despeckle: Despeckle = Despeckle()
     detection: Detection = Detection()
     composite: CompositeRanges = CompositeRanges()
+    event_grid: EventGrid = EventGrid()
     aoi_polygon: Polygon | MultiPolygon | None = None  # EPSG:4326; None for a rectangle Area of Interest
 
 
@@ -123,6 +132,7 @@ def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
             quegan_window=int(despeckle.get("quegan_window", Despeckle.quegan_window)),
             enl=float(despeckle.get("enl", Despeckle.enl)),
         ),
+        event_grid=_event_grid(raw.get("event_grid", {}), path),
         project=raw["project"],
         event=raw["event"],
         area_of_interest=bbox,
@@ -138,6 +148,16 @@ def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
             assets=tuple(series["assets"]),
         ),
     )
+
+
+def _event_grid(raw: dict, path: Path) -> EventGrid:
+    unknown = set(raw) - set(EventGrid.__dataclass_fields__)
+    if unknown:
+        raise ValueError(f"{path}: unknown event_grid setting(s) {sorted(unknown)}")
+    grid = EventGrid(crs=raw.get("crs"), pixel_size=float(raw.get("pixel_size", EventGrid.pixel_size)))
+    if not grid.pixel_size > 0:
+        raise ValueError(f"{path}: event_grid pixel_size must be positive")
+    return grid
 
 
 def _area_of_interest(raw, path: Path, base: Path):

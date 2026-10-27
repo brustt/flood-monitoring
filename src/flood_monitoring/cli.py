@@ -7,15 +7,17 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import replace
 from types import ModuleType
 
-from flood_monitoring import composite, despeckle, download, event, export, flood_extent, stack
+from flood_monitoring import composite, despeckle, download, event, export, flood_extent, merge_stage, stack
 from flood_monitoring.config import EventConfig, load_event_config
 from flood_monitoring.paths import EventPaths, event_paths
 
 DEFAULT_EVENT = "saintes-2026-02"
 
-# In processing order.
+# In processing order. Stages up to "composite" run once per Series (relative orbit).
+PER_SERIES = ("download", "stack", "despeckle", "event", "flood-extent", "composite")
 STAGES = {
     "download": download,
     "stack": stack,
@@ -23,6 +25,7 @@ STAGES = {
     "event": event,
     "flood-extent": flood_extent,
     "composite": composite,
+    "merge": merge_stage,
     "export": export,
 }
 
@@ -41,13 +44,24 @@ def run_stages(
     """Run *names* in order. Stages whose output exists skip themselves; the download is
     skipped without a search when Subsets are already on disk."""
     stages = stages or STAGES
+    orbits = config.series.relative_orbits
+    # A single orbit keeps the flat folders: its results already are the global Layers.
+    series_paths = [paths] if len(orbits) == 1 else [paths.series_paths(o) for o in orbits]
     paths.ensure()
+    for p in series_paths:
+        p.ensure()
     for name in names:
-        print(f"[{name}]")
-        if name == "download" and not force and has_subsets(paths):
-            print(f"skip: Subsets already in {paths.raw}")
+        if name not in PER_SERIES:
+            print(f"[{name}]")
+            stages[name].run(config, paths, force=force)
             continue
-        stages[name].run(config, paths, force=force)
+        for orbit, p in zip(orbits, series_paths):
+            print(f"[{name}]" if len(orbits) == 1 else f"[{name}] relative orbit {orbit}")
+            if name == "download" and not force and has_subsets(p):
+                print(f"skip: Subsets already in {p.raw}")
+                continue
+            series_config = replace(config, series=replace(config.series, relative_orbits=(orbit,)))
+            stages[name].run(series_config, p, force=force)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -93,6 +107,8 @@ def _show(config, paths) -> None:
         f"{series.orbit_state}, {series.instrument_mode}, relative orbit(s) {', '.join(map(str, series.relative_orbits))}, "
         f"assets {', '.join(series.assets)}"
     )
+    grid = config.event_grid
+    print(f"Event grid        {grid.crs or 'CRS of the first Series'}, {grid.pixel_size:g} m")
     print("Paths")
     for name, path in paths.describe().items():
         print(f"  {name:<10} {path}")

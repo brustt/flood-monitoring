@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -24,16 +24,25 @@ class EventPaths:
     event: str
     data_root: Path
     repo_root: Path = REPO_ROOT
+    orbit: int | None = None  # set on the paths of one Series of a multi-orbit Event
+
+    def series_paths(self, orbit: int) -> EventPaths:
+        """Paths of the Series of relative orbit *orbit*; each keeps its own Cube, summary and masks."""
+        return replace(self, orbit=orbit)
+
+    def _folder(self, kind: str) -> Path:
+        folder = self.data_root / kind / self.event
+        return folder if self.orbit is None else folder / f"orbit-{self.orbit}"
 
     @property
     def raw(self) -> Path:
         """Downloaded Subsets of the Series."""
-        return self.data_root / "raw" / self.event
+        return self._folder("raw")
 
     @property
     def interim(self) -> Path:
         """The Cube and the Filtered Cube."""
-        return self.data_root / "interim" / self.event
+        return self._folder("interim")
 
     @property
     def cube(self) -> Path:
@@ -48,7 +57,17 @@ class EventPaths:
     @property
     def processed(self) -> Path:
         """Event Start, Water Masks, Flood Extent and Composites before export."""
-        return self.data_root / "processed" / self.event
+        return self._folder("processed")
+
+    @property
+    def aoi_polygon(self) -> Path:
+        """The Area of Interest polygon of the Event, GeoJSON in EPSG:4326."""
+        return self.data_root / "processed" / self.event / "area-of-interest.geojson"
+
+    @property
+    def orbit_map(self) -> Path:
+        """Global Orbit Map: rank of the Series each Composite pixel came from."""
+        return self.data_root / "processed" / self.event / "orbit-map.tif"
 
     @property
     def summary(self) -> Path:
