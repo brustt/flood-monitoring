@@ -85,11 +85,12 @@ def _show(config, paths) -> None:
     series = config.series
     print(f"Project           {config.project}")
     print(f"Event             {config.event}")
-    print(f"Area of Interest  {list(config.area_of_interest)}")
+    form = "river buffer, bounding box" if config.aoi_polygon is not None else "rectangle"
+    print(f"Area of Interest  {list(config.area_of_interest)} ({form})")
     print(f"Window            {config.window.start} to {config.window.end}")
     print(
         f"Series            {series.collection}, {series.start} to {series.end}, "
-        f"{series.orbit_state}, {series.instrument_mode}, relative orbit {series.relative_orbit}, "
+        f"{series.orbit_state}, {series.instrument_mode}, relative orbit(s) {', '.join(map(str, series.relative_orbits))}, "
         f"assets {', '.join(series.assets)}"
     )
     print("Paths")

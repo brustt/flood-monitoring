@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 
 import yaml
+from shapely.geometry import MultiPolygon, Polygon
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EVENTS_DIR = REPO_ROOT / "events"
@@ -29,7 +30,7 @@ class Series:
     end: date
     orbit_state: str
     instrument_mode: str
-    relative_orbit: int
+    relative_orbits: tuple[int, ...]  # one Series per relative orbit, all of *orbit_state*
     assets: tuple[str, ...]
 
 
@@ -74,12 +75,13 @@ class CompositeRanges:
 class EventConfig:
     project: str
     event: str
-    area_of_interest: tuple[float, float, float, float]
+    area_of_interest: tuple[float, float, float, float]  # bounding box, used for searches and Subsets
     window: Window
     series: Series
     despeckle: Despeckle = Despeckle()
     detection: Detection = Detection()
     composite: CompositeRanges = CompositeRanges()
+    aoi_polygon: Polygon | MultiPolygon | None = None  # EPSG:4326; None for a rectangle Area of Interest
 
 
 def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
@@ -92,11 +94,15 @@ def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
     if raw["event"] != event:
         raise ValueError(f"{path} declares Event {raw['event']!r}, expected {event!r}")
 
-    west, south, east, north = (float(v) for v in raw["area_of_interest"])
-    if not (west < east and south < north):
-        raise ValueError(f"{path}: area_of_interest must be [west, south, east, north]")
-
     series = raw["series"]
+    orbit_state = series["orbit_state"]
+    if orbit_state != "descending":
+        raise ValueError(f"{path}: orbit_state must be 'descending' (one orbit state per Event), got {orbit_state!r}")
+    orbits = series["relative_orbit"]
+    relative_orbits = tuple(int(o) for o in orbits) if isinstance(orbits, list) else (int(orbits),)
+    if not relative_orbits or len(set(relative_orbits)) != len(relative_orbits):
+        raise ValueError(f"{path}: relative_orbit must list each orbit once")
+    bbox, polygon = _area_of_interest(raw["area_of_interest"], path, events_dir.parent)
     despeckle = raw.get("despeckle", {})
     det = raw.get("detection", {})
     defaults = Detection()
@@ -119,18 +125,52 @@ def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
         ),
         project=raw["project"],
         event=raw["event"],
-        area_of_interest=(west, south, east, north),
+        area_of_interest=bbox,
+        aoi_polygon=polygon,
         window=Window(start=_as_date(raw["window"]["start"]), end=_as_date(raw["window"]["end"])),
         series=Series(
             collection=series["collection"],
             start=_as_date(series["start"]),
             end=_as_date(series["end"]),
-            orbit_state=series["orbit_state"],
+            orbit_state=orbit_state,
             instrument_mode=series["instrument_mode"],
-            relative_orbit=int(series["relative_orbit"]),
+            relative_orbits=relative_orbits,
             assets=tuple(series["assets"]),
         ),
     )
+
+
+def _area_of_interest(raw, path: Path, base: Path):
+    """Bounding box and polygon (None for a rectangle) of the ``area_of_interest`` setting.
+
+    Either ``[west, south, east, north]`` or ``{line: <file>, buffer_m: <metres>}``, a buffer around
+    a river line file (relative to the repo root), in EPSG:4326.
+    """
+    if isinstance(raw, dict):
+        if set(raw) != {"line", "buffer_m"}:
+            raise ValueError(f"{path}: area_of_interest buffer form needs exactly 'line' and 'buffer_m'")
+        line = base / raw["line"]
+        if not line.is_file():
+            raise FileNotFoundError(f"{path}: river line file {line} not found")
+        polygon = _buffer_line(line, float(raw["buffer_m"]))
+        west, south, east, north = polygon.bounds
+        return (west, south, east, north), polygon
+    west, south, east, north = (float(v) for v in raw)
+    if not (west < east and south < north):
+        raise ValueError(f"{path}: area_of_interest must be [west, south, east, north]")
+    return (west, south, east, north), None
+
+
+def _buffer_line(line: Path, metres: float):
+    """All geometries of *line* merged and buffered by *metres*, as an EPSG:4326 polygon."""
+    import geopandas as gpd
+
+    if not metres > 0:
+        raise ValueError("buffer_m must be positive")
+    lines = gpd.read_file(line).to_crs(4326)
+    projected = lines.to_crs(lines.estimate_utm_crs())
+    buffered = gpd.GeoSeries([projected.union_all().buffer(metres)], crs=projected.crs)
+    return buffered.to_crs(4326).iloc[0]
 
 
 def _as_date(value: date | str) -> date:

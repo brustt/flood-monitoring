@@ -18,6 +18,8 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
     search-result metadata is written by eo-stac to ``<raw>/metadata/``.
     """
     series = config.series
+    if len(series.relative_orbits) > 1:
+        raise NotImplementedError("downloading several relative orbits is not implemented yet (see #23)")
     gdf = search_items(
         STACSource.from_url(STAC_API),
         collections=[series.collection],
@@ -26,7 +28,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
         params=Sentinel1Params(
             orbit_state=series.orbit_state,
             instrument_mode=series.instrument_mode,
-            orbit_number=series.relative_orbit,
+            orbit_number=series.relative_orbits[0],
             polarizations=[a.upper() for a in series.assets],
         ),
     )
