@@ -11,7 +11,7 @@ import rioxarray  # noqa: F401  (registers the .rio accessor)
 import xarray as xr
 from eo_pipe.steps.raster.sieve import SieveStep
 
-from .config import EventConfig
+from .config import Detection, EventConfig
 from .detection import flood_extent, peak, permanent_water, to_db, water
 from .event import acquisition_dates
 from .paths import EventPaths
@@ -30,12 +30,60 @@ def read_mask(path: Path) -> np.ndarray:
         return da.values[0].astype(bool)
 
 
-def sieve(masks: list[Path], work: Path, size: int, connectedness: int) -> list[Path]:
-    """eo-pipe's sieve step on each mask file; returns the sieved files in the same order."""
+def sieve_masks(masks: np.ndarray, template: xr.DataArray, work: Path, size: int, connectedness: int) -> np.ndarray:
+    """eo-pipe's sieve step on each (y, x) mask of *masks*; returns the sieved masks in the same order.
+
+    eo-pipe works on files, so the masks go through GeoTIFFs in *work*, which is emptied first
+    and removed once the sieved masks are read back.
+    """
     shutil.rmtree(work, ignore_errors=True)
-    work.mkdir(parents=True)
-    result = SieveStep().execute(masks, work, threshold=size, connectedness=connectedness)
-    return [Path(o.path) for o in result.outputs]
+    inputs = [work / "raw" / f"{i}.tif" for i in range(len(masks))]
+    for mask, path in zip(masks, inputs):
+        write_mask(mask, template, path)
+    (work / "sieved").mkdir()
+    result = SieveStep().execute(inputs, work / "sieved", threshold=size, connectedness=connectedness)
+    sieved = np.stack([read_mask(Path(o.path)) for o in result.outputs])
+    shutil.rmtree(work)
+    return sieved
+
+
+def load_vv_db(path: Path) -> tuple[list[str], np.ndarray, xr.DataArray]:
+    """Dates, VV in dB (time, y, x) and a georeferenced (y, x) template grid of the Filtered Cube at *path*."""
+    with xr.open_dataset(path) as cube:
+        vv = cube["VV"]
+        dates = acquisition_dates(cube["time"].values)
+        db = to_db(vv.values, cube.attrs.get("nodata"))
+        template = vv.isel(time=0, drop=True).load()
+        template = template.rio.write_crs(cube["spatial_ref"].attrs["spatial_ref"])
+    return dates, db, template
+
+
+def pixel_area_km2(template: xr.DataArray) -> float:
+    return abs(float(template["x"].diff("x").mean()) * float(template["y"].diff("y").mean())) / 1e6
+
+
+def extent_summary(
+    rules: Detection,
+    post_dates: list[str],
+    permanent: np.ndarray,
+    masks: np.ndarray,
+    extent: np.ndarray,
+    pixel_km2: float,
+) -> dict:
+    """Peak, the rules used and the areas in km2, to add to the Event summary."""
+    peak_i, areas = peak(masks, permanent)
+    return {
+        "peak": post_dates[peak_i],
+        "rules_extent": {
+            "water_db": rules.water_db,
+            "permanent_fraction": rules.permanent_fraction,
+            "sieve_size": rules.sieve_size,
+            "sieve_connectedness": rules.sieve_connectedness,
+        },
+        "flooded_area_km2": {day: round(a * pixel_km2, 3) for day, a in zip(post_dates, areas)},
+        "permanent_water_km2": round(int(permanent.sum()) * pixel_km2, 3),
+        "flood_extent_km2": round(int(extent.sum()) * pixel_km2, 3),
+    }
 
 
 def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
@@ -49,51 +97,26 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
 
     rules = config.detection
     summary = json.loads(paths.summary.read_text())
-    with xr.open_dataset(paths.filtered_cube) as cube:
-        vv = cube["VV"]
-        dates = acquisition_dates(cube["time"].values)
-        db = to_db(vv.values, cube.attrs.get("nodata"))
-        template = vv.isel(time=0, drop=True).load()
-        template = template.rio.write_crs(cube["spatial_ref"].attrs["spatial_ref"])
+    dates, db, template = load_vv_db(paths.filtered_cube)
     start = dates.index(summary["event_start"])
-    post = list(range(start, len(dates)))
+    post_dates = dates[start:]
 
-    work = paths.processed / "_sieve"
-    raw = work / "raw"
-    # Permanent Water: water in most pre-event dates, before sieve.
-    pre_water = np.stack([water(db[i], rules.water_db) for i in range(start)])
-    write_mask(permanent_water(pre_water, rules.permanent_fraction), template, raw / "permanent-water.tif")
-    for i in post:
-        write_mask(water(db[i], rules.water_db), template, raw / f"{dates[i]}.tif")
-
-    inputs = [raw / "permanent-water.tif", *(raw / f"{dates[i]}.tif" for i in post)]
-    sieved = sieve(inputs, work / "sieved", rules.sieve_size, rules.sieve_connectedness)
-    permanent = read_mask(sieved[0])
-    masks = np.stack([read_mask(p) for p in sieved[1:]])
-
-    shutil.rmtree(paths.water_masks, ignore_errors=True)
-    for i, mask in zip(post, masks):
-        write_mask(mask, template, paths.water_masks / f"{dates[i]}.tif")
-    write_mask(permanent, template, paths.permanent_water)
+    # Raw masks: Permanent Water first (water in most pre-event dates, thresholded before sieve),
+    # then one Water Mask per Post-event Acquisition. All are sieved alike.
+    pre_water = np.stack([water(d, rules.water_db) for d in db[:start]])
+    raw = np.stack(
+        [permanent_water(pre_water, rules.permanent_fraction), *(water(d, rules.water_db) for d in db[start:])]
+    )
+    sieved = sieve_masks(raw, template, paths.sieve_work, rules.sieve_size, rules.sieve_connectedness)
+    permanent, masks = sieved[0], sieved[1:]
     extent = flood_extent(masks, permanent)
+
+    shutil.rmtree(paths.water_masks, ignore_errors=True)  # no stale dates left from a previous run
+    for day, mask in zip(post_dates, masks):
+        write_mask(mask, template, paths.water_mask(day))
+    write_mask(permanent, template, paths.permanent_water)
     write_mask(extent, template, paths.flood_extent)
 
-    peak_i, areas = peak(masks, permanent)
-    pixel_km2 = abs(float(template["x"].diff("x").mean()) * float(template["y"].diff("y").mean())) / 1e6
-    summary.update(
-        {
-            "peak": dates[post[peak_i]],
-            "rules_extent": {
-                "water_db": rules.water_db,
-                "permanent_fraction": rules.permanent_fraction,
-                "sieve_size": rules.sieve_size,
-                "sieve_connectedness": rules.sieve_connectedness,
-            },
-            "flooded_area_km2": {dates[i]: round(a * pixel_km2, 3) for i, a in zip(post, areas)},
-            "permanent_water_km2": round(int(permanent.sum()) * pixel_km2, 3),
-            "flood_extent_km2": round(int(extent.sum()) * pixel_km2, 3),
-        }
-    )
+    summary.update(extent_summary(rules, post_dates, permanent, masks, extent, pixel_area_km2(template)))
     paths.summary.write_text(json.dumps(summary, indent=2) + "\n")
-    shutil.rmtree(work, ignore_errors=True)
-    print(f"Peak {dates[post[peak_i]]}, Flood Extent {summary['flood_extent_km2']} km2")
+    print(f"Peak {summary['peak']}, Flood Extent {summary['flood_extent_km2']} km2")
