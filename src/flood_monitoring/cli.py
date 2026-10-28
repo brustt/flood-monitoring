@@ -14,7 +14,10 @@ from flood_monitoring import composite, despeckle, download, event, export, floo
 from flood_monitoring.config import EventConfig, load_event_config
 from flood_monitoring.paths import EventPaths, event_paths
 
-DEFAULT_EVENT = "saintes-2026-02"
+from . import composite, despeckle, download, event, export, flood_extent, stack
+from ._env import ensure_clean_environment
+from .config import load_event_config
+from .paths import event_paths
 
 # In processing order. Stages up to "composite" run once per Series (relative orbit).
 PER_SERIES = ("download", "stack", "despeckle", "event", "flood-extent", "composite")
@@ -65,6 +68,7 @@ def run_stages(
 
 
 def main(argv: list[str] | None = None) -> int:
+    ensure_clean_environment(sys.argv[1:] if argv is None else argv)
     ap = argparse.ArgumentParser(prog="flood-monitoring")
     sub = ap.add_subparsers(dest="cmd", required=True)
     rp = sub.add_parser("run", help="run the pipeline of an Event, skipping stages already done")
