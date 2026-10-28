@@ -24,6 +24,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
         STACSource.from_url(STAC_API),
         collections=[series.collection],
         bbox=list(config.area_of_interest),
+        polygon=config.aoi_polygon,  # takes precedence over bbox when set
         datetime=f"{series.start.isoformat()}/{series.end.isoformat()}",
         params=Sentinel1Params(
             orbit_state=series.orbit_state,
