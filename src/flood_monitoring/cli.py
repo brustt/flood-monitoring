@@ -101,7 +101,7 @@ def _show(config, paths) -> None:
     series = config.series
     print(f"Project           {config.project}")
     print(f"Event             {config.event}")
-    form = "river buffer, bounding box" if config.aoi_polygon is not None else "rectangle"
+    form = "polygon, bounding box" if config.aoi_polygon is not None else "rectangle"
     print(f"Area of Interest  {list(config.area_of_interest)} ({form})")
     print(f"Window            {config.window.start} to {config.window.end}")
     print(

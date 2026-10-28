@@ -125,3 +125,43 @@ def test_processing_rejects_infinite_budget(tmp_path):
 def test_processing_rejects_unknown_key(tmp_path):
     with pytest.raises(ValueError, match=r"unknown processing setting\(s\) \['workers'\]"):
         load(tmp_path, "processing:\n  workers: 4\n")
+
+
+def test_vector_file_yields_polygon_and_bounding_box(tmp_path):
+    (tmp_path / "zone.geojson").write_text(
+        '{"type":"FeatureCollection","features":['
+        '{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[0,45],[0.1,45],[0.1,45.1],[0,45]]]}},'
+        '{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[0.2,45],[0.3,45],[0.3,45.2],[0.2,45]]]}}]}'
+    )
+    text = BASE.replace("area_of_interest: [0, 0, 1, 1]", "area_of_interest: zone.geojson")
+    config = load_with_events(tmp_path, text)
+    assert config.area_of_interest == pytest.approx((0.0, 45.0, 0.3, 45.2))
+    assert config.aoi_polygon.geom_type == "MultiPolygon"
+    assert config.aoi_polygon.bounds == pytest.approx(config.area_of_interest)
+
+
+def test_vector_file_is_reprojected_to_lonlat(tmp_path):
+    (tmp_path / "zone.geojson").write_text(
+        '{"type":"FeatureCollection","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:EPSG::32630"}},'
+        '"features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon",'
+        '"coordinates":[[[500000,5000000],[501000,5000000],[501000,5001000],[500000,5000000]]]}}]}'
+    )
+    text = BASE.replace("area_of_interest: [0, 0, 1, 1]", "area_of_interest: zone.geojson")
+    west, south, east, north = load_with_events(tmp_path, text).area_of_interest
+    assert -3.01 < west < east < -2.98 and 45.1 < south < north < 45.2
+
+
+def test_vector_file_without_polygons_is_rejected(tmp_path):
+    (tmp_path / "river.geojson").write_text(
+        '{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},'
+        '"geometry":{"type":"LineString","coordinates":[[0,45],[0.1,45]]}}]}'
+    )
+    text = BASE.replace("area_of_interest: [0, 0, 1, 1]", "area_of_interest: river.geojson")
+    with pytest.raises(ValueError, match="polygon"):
+        load_with_events(tmp_path, text)
+
+
+def test_missing_vector_file_is_rejected(tmp_path):
+    text = BASE.replace("area_of_interest: [0, 0, 1, 1]", "area_of_interest: nope.gpkg")
+    with pytest.raises(FileNotFoundError, match="nope.gpkg"):
+        load_with_events(tmp_path, text)

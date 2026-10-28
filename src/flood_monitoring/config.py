@@ -188,9 +188,17 @@ def _processing(raw: dict, path: Path) -> Processing:
 def _area_of_interest(raw, path: Path, base: Path):
     """Bounding box and polygon (None for a rectangle) of the ``area_of_interest`` setting.
 
-    Either ``[west, south, east, north]`` or ``{line: <file>, buffer_m: <metres>}``, a buffer around
-    a river line file (relative to the repo root), in EPSG:4326.
+    Either ``[west, south, east, north]`` in EPSG:4326, ``<file>``, a polygon vector file, or
+    ``{line: <file>, buffer_m: <metres>}``, a buffer around a river line file. Files are relative to
+    the repo root.
     """
+    if isinstance(raw, str):
+        vector = base / raw
+        if not vector.is_file():
+            raise FileNotFoundError(f"{path}: area_of_interest file {vector} not found")
+        polygon = _read_polygon(vector)
+        west, south, east, north = polygon.bounds
+        return (west, south, east, north), polygon
     if isinstance(raw, dict):
         if set(raw) != {"line", "buffer_m"}:
             raise ValueError(f"{path}: area_of_interest buffer form needs exactly 'line' and 'buffer_m'")
@@ -204,6 +212,16 @@ def _area_of_interest(raw, path: Path, base: Path):
     if not (west < east and south < north):
         raise ValueError(f"{path}: area_of_interest must be [west, south, east, north]")
     return (west, south, east, north), None
+
+
+def _read_polygon(vector: Path):
+    """All geometries of *vector* merged, as an EPSG:4326 polygon."""
+    import geopandas as gpd
+
+    polygon = gpd.read_file(vector).to_crs(4326).union_all()
+    if polygon.geom_type not in ("Polygon", "MultiPolygon"):
+        raise ValueError(f"{vector}: area_of_interest file must hold polygons, got {polygon.geom_type}")
+    return polygon
 
 
 def _buffer_line(line: Path, metres: float):
