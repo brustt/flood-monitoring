@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 
 import yaml
+from shapely.geometry import MultiPolygon, Polygon
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EVENTS_DIR = REPO_ROOT / "events"
@@ -29,17 +30,67 @@ class Series:
     end: date
     orbit_state: str
     instrument_mode: str
-    relative_orbit: int
+    relative_orbits: tuple[int, ...]  # one Series per relative orbit, all of *orbit_state*
     assets: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Despeckle:
+    """Lee (spatial) and Quegan (temporal) filter settings; eo-pipe's defaults."""
+
+    lee_window: int = 7
+    quegan_window: int = 7
+    enl: float = 4.4
+
+
+@dataclass(frozen=True)
+class Detection:
+    """Detection rules; the values settled in docs/detection-rules.md."""
+
+    min_baseline: int = 8  # earlier Acquisitions needed before a candidate Event Start
+    drop_db: float = 4.0  # a pixel is changed when its Drop exceeds this
+    event_share: float = 0.01  # Event Start: first date with more changed pixels than this
+    water_db: float = -15.0  # Water Mask: VV below this
+    permanent_fraction: float = 0.5  # Permanent Water: water in more than this share of pre-event dates
+    sieve_size: int = 20  # eo-pipe sieve: minimum region size, pixels
+    sieve_connectedness: int = 8
+
+
+@dataclass(frozen=True)
+class CompositeRanges:
+    """Value range in dB stretched to 0-255 for each Composite band (red VV, green VH, blue VV minus VH).
+
+    The same ranges go into the manifest's ``rgb`` hint.
+    """
+
+    vv: tuple[float, float] = (-20.0, -3.0)
+    vh: tuple[float, float] = (-26.0, -9.0)
+    vv_minus_vh: tuple[float, float] = (2.0, 12.0)
+
+    def as_dict(self) -> dict[str, tuple[float, float]]:
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
+
+
+@dataclass(frozen=True)
+class EventGrid:
+    """Grid of the global Layers. *crs* None means the CRS of the first Series (in config order)."""
+
+    crs: str | None = None
+    pixel_size: float = 10.0  # metres
 
 
 @dataclass(frozen=True)
 class EventConfig:
     project: str
     event: str
-    area_of_interest: tuple[float, float, float, float]
+    area_of_interest: tuple[float, float, float, float]  # bounding box, used for searches and Subsets
     window: Window
     series: Series
+    despeckle: Despeckle = Despeckle()
+    detection: Detection = Detection()
+    composite: CompositeRanges = CompositeRanges()
+    event_grid: EventGrid = EventGrid()
+    aoi_polygon: Polygon | MultiPolygon | None = None  # EPSG:4326; None for a rectangle Area of Interest
 
 
 def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
@@ -52,27 +103,108 @@ def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
     if raw["event"] != event:
         raise ValueError(f"{path} declares Event {raw['event']!r}, expected {event!r}")
 
-    west, south, east, north = (float(v) for v in raw["area_of_interest"])
-    if not (west < east and south < north):
-        raise ValueError(f"{path}: area_of_interest must be [west, south, east, north]")
-
     series = raw["series"]
+    orbit_state = series["orbit_state"]
+    if orbit_state != "descending":
+        raise ValueError(f"{path}: orbit_state must be 'descending' (one orbit state per Event), got {orbit_state!r}")
+    orbits = series["relative_orbit"]
+    relative_orbits = tuple(int(o) for o in orbits) if isinstance(orbits, list) else (int(orbits),)
+    if not relative_orbits or len(set(relative_orbits)) != len(relative_orbits):
+        raise ValueError(f"{path}: relative_orbit must list each orbit once")
+    bbox, polygon = _area_of_interest(raw["area_of_interest"], path, events_dir.parent)
+    despeckle = raw.get("despeckle", {})
+    det = raw.get("detection", {})
+    defaults = Detection()
+    detection = Detection(
+        **{
+            name: type(getattr(defaults, name))(det.get(name, getattr(defaults, name)))
+            for name in Detection.__dataclass_fields__
+        }
+    )
+    unknown = set(det) - set(Detection.__dataclass_fields__)
+    if unknown:
+        raise ValueError(f"{path}: unknown detection setting(s) {sorted(unknown)}")
     return EventConfig(
+        detection=detection,
+        composite=_composite_ranges(raw.get("composite", {}), path),
+        despeckle=Despeckle(
+            lee_window=int(despeckle.get("lee_window", Despeckle.lee_window)),
+            quegan_window=int(despeckle.get("quegan_window", Despeckle.quegan_window)),
+            enl=float(despeckle.get("enl", Despeckle.enl)),
+        ),
+        event_grid=_event_grid(raw.get("event_grid", {}), path),
         project=raw["project"],
         event=raw["event"],
-        area_of_interest=(west, south, east, north),
+        area_of_interest=bbox,
+        aoi_polygon=polygon,
         window=Window(start=_as_date(raw["window"]["start"]), end=_as_date(raw["window"]["end"])),
         series=Series(
             collection=series["collection"],
             start=_as_date(series["start"]),
             end=_as_date(series["end"]),
-            orbit_state=series["orbit_state"],
+            orbit_state=orbit_state,
             instrument_mode=series["instrument_mode"],
-            relative_orbit=int(series["relative_orbit"]),
+            relative_orbits=relative_orbits,
             assets=tuple(series["assets"]),
         ),
     )
 
 
+def _event_grid(raw: dict, path: Path) -> EventGrid:
+    unknown = set(raw) - set(EventGrid.__dataclass_fields__)
+    if unknown:
+        raise ValueError(f"{path}: unknown event_grid setting(s) {sorted(unknown)}")
+    grid = EventGrid(crs=raw.get("crs"), pixel_size=float(raw.get("pixel_size", EventGrid.pixel_size)))
+    if not grid.pixel_size > 0:
+        raise ValueError(f"{path}: event_grid pixel_size must be positive")
+    return grid
+
+
+def _area_of_interest(raw, path: Path, base: Path):
+    """Bounding box and polygon (None for a rectangle) of the ``area_of_interest`` setting.
+
+    Either ``[west, south, east, north]`` or ``{line: <file>, buffer_m: <metres>}``, a buffer around
+    a river line file (relative to the repo root), in EPSG:4326.
+    """
+    if isinstance(raw, dict):
+        if set(raw) != {"line", "buffer_m"}:
+            raise ValueError(f"{path}: area_of_interest buffer form needs exactly 'line' and 'buffer_m'")
+        line = base / raw["line"]
+        if not line.is_file():
+            raise FileNotFoundError(f"{path}: river line file {line} not found")
+        polygon = _buffer_line(line, float(raw["buffer_m"]))
+        west, south, east, north = polygon.bounds
+        return (west, south, east, north), polygon
+    west, south, east, north = (float(v) for v in raw)
+    if not (west < east and south < north):
+        raise ValueError(f"{path}: area_of_interest must be [west, south, east, north]")
+    return (west, south, east, north), None
+
+
+def _buffer_line(line: Path, metres: float):
+    """All geometries of *line* merged and buffered by *metres*, as an EPSG:4326 polygon."""
+    import geopandas as gpd
+
+    if not metres > 0:
+        raise ValueError("buffer_m must be positive")
+    lines = gpd.read_file(line).to_crs(4326)
+    projected = lines.to_crs(lines.estimate_utm_crs())
+    buffered = gpd.GeoSeries([projected.union_all().buffer(metres)], crs=projected.crs)
+    return buffered.to_crs(4326).iloc[0]
+
+
 def _as_date(value: date | str) -> date:
     return value if isinstance(value, date) else date.fromisoformat(value)
+
+
+def _composite_ranges(raw: dict, path: Path) -> CompositeRanges:
+    unknown = set(raw) - set(CompositeRanges.__dataclass_fields__)
+    if unknown:
+        raise ValueError(f"{path}: unknown composite band(s) {sorted(unknown)}")
+    ranges = {}
+    for name, value in raw.items():
+        low, high = (float(v) for v in value)
+        if not low < high:
+            raise ValueError(f"{path}: composite {name} range must be [low, high] with low < high")
+        ranges[name] = (low, high)
+    return CompositeRanges(**ranges)

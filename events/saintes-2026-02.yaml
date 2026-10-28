@@ -18,3 +18,27 @@ series:
   instrument_mode: IW
   relative_orbit: 8
   assets: [vv, vh]
+
+# Speckle filters on linear power: Lee (spatial) then Quegan (temporal).
+# enl 4.4 is eo-pipe's default (Sentinel-1 IW GRDH).
+despeckle:
+  lee_window: 7
+  quegan_window: 7
+  enl: 4.4
+
+# Detection rules, see docs/detection-rules.md. These are the defaults.
+detection:
+  min_baseline: 8
+  drop_db: 4.0
+  event_share: 0.01
+  water_db: -15.0
+  permanent_fraction: 0.5
+  sieve_size: 20
+  sieve_connectedness: 8
+
+# Composite value ranges in dB, stretched to 0-255 as red VV, green VH, blue VV minus VH.
+# Chosen by looking at the Saintes Composites; also used for the manifest's rgb hint.
+composite:
+  vv: [-20, -3]
+  vh: [-26, -9]
+  vv_minus_vh: [2, 12]

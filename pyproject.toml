@@ -10,6 +10,8 @@ requires-python = ">=3.12"
 dependencies = [
     "eo-pipe",
     "eo-stac",
+    "geopandas",
+    "shapely",
     "platform-publish",
     "pyyaml>=6.0",
 ]
@@ -20,6 +22,14 @@ flood-monitoring = "flood_monitoring.cli:main"
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+]
+notebook = [
+    "folium>=0.20.0",
+    "ipykernel>=7.4.0",
+    "matplotlib>=3.11.2",
+    "nbclient>=0.11.0",
+    "nbformat>=5.11.1",
+    "pillow>=12.3.0",
 ]
 
 # eo-pipe pins the gdal Python bindings, which compile against the system

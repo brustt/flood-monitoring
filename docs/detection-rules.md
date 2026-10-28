@@ -1,0 +1,42 @@
+# Detection rules (settled on saintes-2026-02, issue #5)
+
+Input: the Filtered Cube, VV only, converted from linear power to dB (`10·log10`). The Filtered Cube has 31 Acquisitions (2025-09-02 … 2026-03-01), no nodata pixels. Parameters below are defaults for `events/<event>.yaml`; the reference Event is saintes-2026-02.
+
+## Event Start
+
+1. **Baseline** for candidate Acquisition *k*: per-pixel **median of VV dB over all Acquisitions before *k***. At least **8** earlier Acquisitions are needed, so candidates start at the 9th Acquisition (2025-10-20).
+2. **Drop** = Baseline − VV(k), in dB. A pixel is *changed* if Drop **> 4 dB**.
+3. **Share(k)** = changed pixels / all pixels of the Area of Interest.
+4. **Event Start** = the **first** candidate with Share **> 1 %** (fixed fraction). **Before** = the Acquisition just before it.
+5. If no candidate qualifies, the Event fails (no flood detected); do not guess.
+
+Why: the Baseline from only earlier dates is causal (no flood in the median). At 4 dB the autumn noise is ≤ 0.1 % and the 2025-12-31 / 2026-01-06 wet episode (0.3–0.7 %, 3–5 % at 3 dB, so 3 dB is too low) stays below 1 %. 5 dB is too high (02-05 is 0.8–1.0 %). The margin on the 1 % line is real but thin (0.7 % vs 1.4–1.7 %); the largest-jump rule was not used because the first flood date is not the biggest step (02-17 and 02-23 jump more).
+
+Result for Saintes: **Event Start 2026-02-05, Before 2026-01-30.** Share: 02-05 1.68 %, 02-11 1.43 %, 02-17 2.89 %, 02-23 3.41 %, 03-01 2.64 % (running Baseline, 4 dB).
+
+## Water Mask (per Post-event Acquisition)
+
+- **Plain Otsu is not usable.** Corrected after the owner looked at the 02-23 histogram: each post-event date *is* bimodal, with a small water mode at −17 to −21 dB, 10–13 dB below the land mode (−7 to −8 dB), but only ~3–4 % of pixels. Otsu favours balanced classes and cuts the land mode instead: 21–31 % "water" on 02-05, 02-11, 02-17 and 03-01 (thresholds −8.7 to −9.9 dB); only 02-23 comes out right by luck (−12.6 dB, 6 %). Pooled over all post-event dates it gives −9.5 dB. The valley between the modes moves by date (−15 dB on 02-05/02-11, −16 on 02-17/03-01, −18.4 on 02-23), so no single value sits exactly in it.
+- **Alternative to the fixed threshold, not yet map-checked:** Otsu per Acquisition on the pixels below the land mode (the left side only, which removes the imbalance). It gives −12.4 to −14.7 dB and 3.6–4.1 % water on every date. Risk: −12 to −13 dB is inside the land mode's lower tail (1.9 % of pixels in −13…−12), so dark fields may enter the mask on early dates. Map comparison (`prototypes/rules_compare_masks.py`): on 02-23 the two masks are nearly identical (+0.17 %); on 02-05 Otsu-left (−12.4 dB) gives 3.6 % against 2.1 %, the extra being mostly a rim of mixed edge pixels (mean −13.7 dB) around the flooded fields plus scattered specks away from the river (probable dark fields). **Decision: keep fixed −15 dB** (reproducible, fewer false positives, same result at the Peak); switch to Otsu-left only if fuller flood edges are wanted. `prototypes/rules_explore6.py` has the histogram numbers.
+- **Fixed threshold: VV < −15 dB** → water. Same value for every Acquisition. (Otsu restricted to pixels < −10 dB gives −14.3 dB, which agrees.) Sensitivity of the Peak area: −14 dB 3.8 %, −15 dB 3.3 %, −16 dB 2.9 %, −17 dB 2.6 %. The Peak date and the map shape do not change.
+- Then **eo-pipe `sieve`** with `threshold=20`, `connectedness=8` (eo-pipe defaults, ~0.2 ha at 10 m). Checked with the real step on the Peak mask: 77 118 raw water px → 76 647 px. Sizes 50 and 100 start eating real flooded fields (75 709 / 74 057), 5 removes almost nothing.
+
+## Permanent Water
+
+Per-pixel share of the **Acquisitions before the Event Start** with VV < −15 dB (raw, before sieve); Permanent Water = share **> 0.5** (water in most pre-event dates), then `sieve` 20 / 8. It is 0.13 % of the Area of Interest (the narrow river bed and a few ponds). Using the Baseline instead was not tried; the "most dates" rule is sufficient and avoids a second threshold.
+
+## Flood Extent
+
+Union of the sieved Water Masks of all Post-event Acquisitions, minus Permanent Water.
+
+## Peak
+
+The Post-event Acquisition with the largest (Water Mask − Permanent Water) area.
+
+Result for Saintes (−15 dB, sieve 20): flooded area 02-05 1.98 %, 02-11 1.81 %, 02-17 2.89 %, **02-23 3.30 %**, 03-01 2.78 % → **Peak 2026-02-23**. Flood Extent = 3.5 % of the Area of Interest (≈ 7.8 km²).
+
+**Confirmed by the owner: the Peak is 2026-02-23.** The issue had expected about 2026-02-17, but the rules give 02-23 for every threshold (−14 … −17 dB) and sieve size (5 … 50) tried, with 02-17 second. The Peak stays "largest area", as defined in `CONTEXT.md`. The maps show the Charente valley flooded from 02-05 to 03-01, widest on 02-23.
+
+## Prototype scripts
+
+`prototypes/rules_explore*.py` and `prototypes/rules_sieve_eopipe.py` reproduce the numbers. They read the Filtered Cube from `$FLOOD_MONITORING_DATA_ROOT` layout and write scratch files to a job temp dir; they are throwaway. `rules_explore5.py` (area/Peak/Extent figures) uses a scipy stand-in for sieve because of that GDAL problem; `rules_sieve_eopipe.py` runs the real eo-pipe step on the Peak mask and confirms the effect is the same. The pipeline must call eo-pipe's `sieve`. `rules_sieve_eopipe.py` needs a GDAL environment without OTB's `LD_LIBRARY_PATH`/`PYTHONPATH` on this machine.

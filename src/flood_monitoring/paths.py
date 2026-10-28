@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -24,21 +24,87 @@ class EventPaths:
     event: str
     data_root: Path
     repo_root: Path = REPO_ROOT
+    orbit: int | None = None  # set on the paths of one Series of a multi-orbit Event
+
+    def series_paths(self, orbit: int) -> EventPaths:
+        """Paths of the Series of relative orbit *orbit*; each keeps its own Cube, summary and masks."""
+        return replace(self, orbit=orbit)
+
+    def _folder(self, kind: str) -> Path:
+        folder = self.data_root / kind / self.event
+        return folder if self.orbit is None else folder / f"orbit-{self.orbit}"
 
     @property
     def raw(self) -> Path:
         """Downloaded Subsets of the Series."""
-        return self.data_root / "raw" / self.event
+        return self._folder("raw")
 
     @property
     def interim(self) -> Path:
         """The Cube and the Filtered Cube."""
-        return self.data_root / "interim" / self.event
+        return self._folder("interim")
+
+    @property
+    def cube(self) -> Path:
+        """The Cube: all Acquisitions stacked, VV and VH, linear power."""
+        return self.interim / "cube.nc"
+
+    @property
+    def filtered_cube(self) -> Path:
+        """The Cube after Lee then Quegan."""
+        return self.interim / "filtered-cube.nc"
 
     @property
     def processed(self) -> Path:
         """Event Start, Water Masks, Flood Extent and Composites before export."""
-        return self.data_root / "processed" / self.event
+        return self._folder("processed")
+
+    @property
+    def aoi_polygon(self) -> Path:
+        """The Area of Interest polygon of the Event, GeoJSON in EPSG:4326."""
+        return self.data_root / "processed" / self.event / "area-of-interest.geojson"
+
+    @property
+    def orbit_map(self) -> Path:
+        """Global Orbit Map: rank of the Series each Composite pixel came from."""
+        return self.data_root / "processed" / self.event / "orbit-map.tif"
+
+    @property
+    def summary(self) -> Path:
+        """Event Start, Peak, thresholds and areas, as JSON."""
+        return self.processed / "summary.json"
+
+    @property
+    def water_masks(self) -> Path:
+        """One sieved Water Mask GeoTIFF per Post-event Acquisition, ``<yyyy-mm-dd>.tif``."""
+        return self.processed / "water-masks"
+
+    def water_mask(self, day: str) -> Path:
+        """Water Mask of the Post-event Acquisition of *day* (``yyyy-mm-dd``)."""
+        return self.water_masks / f"{day}.tif"
+
+    @property
+    def sieve_work(self) -> Path:
+        """Scratch folder of the sieve, removed once the Water Masks are sieved."""
+        return self.processed / "_sieve"
+
+    @property
+    def permanent_water(self) -> Path:
+        return self.processed / "permanent-water.tif"
+
+    @property
+    def flood_extent(self) -> Path:
+        return self.processed / "flood-extent.tif"
+
+    @property
+    def before_composite(self) -> Path:
+        """Composite of the last Acquisition before the Event Start."""
+        return self.processed / "before-composite.tif"
+
+    @property
+    def after_composite(self) -> Path:
+        """Composite of the Peak."""
+        return self.processed / "after-composite.tif"
 
     @property
     def outputs(self) -> Path:
