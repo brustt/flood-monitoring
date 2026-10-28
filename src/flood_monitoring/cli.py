@@ -11,13 +11,11 @@ from dataclasses import replace
 from types import ModuleType
 
 from flood_monitoring import composite, despeckle, download, event, export, flood_extent, merge_stage, stack
+from flood_monitoring._env import ensure_clean_environment
 from flood_monitoring.config import EventConfig, load_event_config
 from flood_monitoring.paths import EventPaths, event_paths
 
-from . import composite, despeckle, download, event, export, flood_extent, stack
-from ._env import ensure_clean_environment
-from .config import load_event_config
-from .paths import event_paths
+DEFAULT_EVENT = "saintes-2026-02"
 
 # In processing order. Stages up to "composite" run once per Series (relative orbit).
 PER_SERIES = ("download", "stack", "despeckle", "event", "flood-extent", "composite")

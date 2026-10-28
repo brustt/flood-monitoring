@@ -19,6 +19,8 @@ from pathlib import Path
 # Variables that must not leak into the process.
 UNSET = ("PYTHONPATH", "LD_LIBRARY_PATH", "GDAL_DRIVER_PATH", "PROJ_LIB")
 _FALLBACK_GDAL_DATA = "/usr/local/share/gdal"
+# Set in the re-executed process so that it never re-executes again.
+REEXECUTED = "FLOOD_MONITORING_CLEAN_ENV"
 
 
 def _pyproj_data() -> str | None:
@@ -49,10 +51,17 @@ def clean_environment(env: dict[str, str]) -> dict[str, str]:
 
 
 def ensure_clean_environment(argv: list[str]) -> None:
-    """Re-execute the CLI with a clean environment unless it already has one."""
+    """Re-execute the CLI with a clean environment unless it already has one.
+
+    Re-executes at most once: imports may edit the environment again (eo-pipe's OTB
+    package pops ``PROJ_DATA``), so comparing alone would re-execute forever.
+    """
+    if os.environ.get(REEXECUTED):
+        return
     clean = clean_environment(dict(os.environ))
     if clean == dict(os.environ):
         return
+    clean[REEXECUTED] = "1"
     os.execve(
         sys.executable,
         [sys.executable, "-m", "flood_monitoring.cli", *argv],

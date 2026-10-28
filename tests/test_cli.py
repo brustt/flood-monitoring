@@ -19,6 +19,12 @@ def fake_stages(calls):
     return {name: stage(name) for name in cli.STAGES}
 
 
+@pytest.fixture(autouse=True)
+def no_reexec(monkeypatch):
+    """main() would replace the pytest process with a re-executed CLI."""
+    monkeypatch.setattr(cli, "ensure_clean_environment", lambda argv: None)
+
+
 @pytest.fixture
 def paths(tmp_path):
     return EventPaths(event="saintes-2026-02", data_root=tmp_path, repo_root=tmp_path / "repo")
