@@ -3,7 +3,7 @@ event: charente-2026-02
 
 # Polygon file, relative to the repo root: the Charente buffered by 200 m within 200 km of Saintes
 # (experiments/extract_charente_buffer.py).
-area_of_interest: ../data/flood-monitoring/external/charente_buffer200.gpkg
+area_of_interest: ../data/flood-monitoring/external/charente_buffer200_simplified.gpkg
 
 # Calendar period of the flood shown on the Platform. Set by hand; it is not
 # the Event Start, which the pipeline detects from the Series.
@@ -13,12 +13,12 @@ window:
 
 series:
   collection: sentinel-1-rtc
-  start: 2025-09-01
+  start: 2025-01-01
   end: 2026-03-01
   orbit_state: descending
   instrument_mode: IW
   relative_orbit: 8
-  assets: [vv, vh]
+  assets: [vv]
 
 # Speckle filters on linear power: Lee (spatial) then Quegan (temporal).
 # enl 4.4 is eo-pipe's default (Sentinel-1 IW GRDH).
