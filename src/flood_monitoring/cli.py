@@ -31,10 +31,6 @@ STAGES = {
 }
 
 
-def has_subsets(paths: EventPaths) -> bool:
-    return any(paths.raw.glob("sentinel-1-rtc/*/*/*.tif"))
-
-
 def run_stages(
     config: EventConfig,
     paths: EventPaths,
@@ -42,8 +38,9 @@ def run_stages(
     force: bool = False,
     stages: dict[str, ModuleType] | None = None,
 ) -> None:
-    """Run *names* in order. Stages whose output exists skip themselves; the download is
-    skipped without a search when Subsets are already on disk."""
+    """Run *names* in order. Stages whose output exists skip themselves; the download
+    searches the Series and eo-stac skips the Subsets already on disk, so a partial
+    download is resumed."""
     stages = stages or STAGES
     orbits = config.series.relative_orbits
     # A single orbit keeps the flat folders: its results already are the global Layers.
@@ -58,9 +55,6 @@ def run_stages(
             continue
         for orbit, p in zip(orbits, series_paths):
             print(f"[{name}]" if len(orbits) == 1 else f"[{name}] relative orbit {orbit}")
-            if name == "download" and not force and has_subsets(p):
-                print(f"skip: Subsets already in {p.raw}")
-                continue
             series_config = replace(config, series=replace(config.series, relative_orbits=(orbit,)))
             stages[name].run(series_config, p, force=force)
 

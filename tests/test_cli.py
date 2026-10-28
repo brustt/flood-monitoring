@@ -52,11 +52,12 @@ def test_runs_all_stages_in_order(paths, config):
     assert {c[1] for c in calls} == {"saintes-2026-02"}
 
 
-def test_download_skipped_when_subsets_exist(paths, config):
+def test_download_runs_when_some_subsets_exist(paths, config):
+    """A partial download must be resumed: eo-stac skips the files already on disk."""
     add_subset(paths)
     calls = []
     cli.run_stages(config, paths, ORDER, stages=fake_stages(calls))
-    assert [c[0] for c in calls] == ORDER[1:]
+    assert [c[0] for c in calls] == ORDER
 
 
 def test_force_redoes_download_and_passes_force(paths, config):
