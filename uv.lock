@@ -778,8 +778,10 @@ source = { editable = "." }
 dependencies = [
     { name = "eo-pipe" },
     { name = "eo-stac" },
+    { name = "geopandas" },
     { name = "platform-publish" },
     { name = "pyyaml" },
+    { name = "shapely" },
 ]
 
 [package.dev-dependencies]
@@ -799,8 +801,10 @@ notebook = [
 requires-dist = [
     { name = "eo-pipe", editable = "../eo-pipe" },
     { name = "eo-stac", editable = "../eo-stac" },
+    { name = "geopandas" },
     { name = "platform-publish", git = "https://github.com/brustt/platform-publish?tag=v0.1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "shapely" },
 ]
 
 [package.metadata.requires-dev]

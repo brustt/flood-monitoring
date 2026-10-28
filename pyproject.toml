@@ -10,6 +10,8 @@ requires-python = ">=3.12"
 dependencies = [
     "eo-pipe",
     "eo-stac",
+    "geopandas",
+    "shapely",
     "platform-publish",
     "pyyaml>=6.0",
 ]

@@ -112,6 +112,34 @@ def test_run_exports_validates_and_archives(config, paths):
     assert (paths.publish / "saintes-2026-02.publish.yaml").exists()
 
 
+MULTI_SUMMARY = {
+    **SUMMARY,
+    "series": [
+        {"relative_orbit": 8, "rank": 1, "before": "2026-01-30", "peak": "2026-02-23"},
+        {"relative_orbit": 110, "rank": 2, "before": "2026-01-31", "peak": "2026-02-24"},
+    ],
+}
+
+
+def test_multi_orbit_manifest_has_a_hidden_orbit_map_labelled_with_dates(config):
+    layers = {l["slug"]: l for l in export.event_manifest(config, MULTI_SUMMARY)["layers"]}
+    orbit_map = layers["orbit-map"]
+    assert orbit_map["shown"] is False
+    assert [c["label"] for c in orbit_map["categories"]] == [
+        "orbit 8: before 2026-01-30, after 2026-02-23",
+        "orbit 110: before 2026-01-31, after 2026-02-24",
+    ]
+    assert "orbit-map" not in {l["slug"] for l in export.event_manifest(config, SUMMARY)["layers"]}
+
+
+def test_run_exports_and_validates_the_orbit_map(config, paths):
+    write_project(paths)
+    paths.summary.write_text(json.dumps(MULTI_SUMMARY))
+    write_raster(paths.orbit_map, mask(3).astype("uint8") + 1, "uint8", 0)
+    export.run(config, paths, executed_at=datetime(2026, 10, 13, 9, 30, 0))
+    assert (paths.outputs / "orbit-map.tif").exists()
+
+
 def test_run_fails_when_validation_fails(config, paths):
     write_project(paths, "slug: Bad Slug\n")
     with pytest.raises(RuntimeError, match="validation"):

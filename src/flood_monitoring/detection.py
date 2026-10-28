@@ -16,23 +16,28 @@ def to_db(power: np.ndarray, nodata: float | None = None) -> np.ndarray:
     return np.where(valid, 10 * np.log10(np.where(valid, power, 1)), np.nan).astype("float32")
 
 
-def drop_share(db: np.ndarray, k: int, drop_db: float) -> float:
+def drop_share(db: np.ndarray, k: int, drop_db: float, inside: np.ndarray | None = None) -> float:
     """Share of pixels whose Drop at step *k* exceeds *drop_db*.
 
     The Baseline is the per-pixel median of steps ``0..k-1``. Pixels with no valid value
-    in the Baseline or at *k* are left out of the share.
+    in the Baseline or at *k* are left out of the share, and so are pixels outside *inside*
+    (the Area of Interest mask), when given.
     """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN pixels give NaN, handled below
         baseline = np.nanmedian(db[:k], axis=0)
     drop = baseline - db[k]
     valid = np.isfinite(drop)
+    if inside is not None:
+        valid &= inside
     if not valid.any():
         return 0.0
     return float((drop[valid] > drop_db).mean())
 
 
-def event_start(db: np.ndarray, min_baseline: int, drop_db: float, min_share: float) -> tuple[int, list[float]]:
+def event_start(
+    db: np.ndarray, min_baseline: int, drop_db: float, min_share: float, inside: np.ndarray | None = None
+) -> tuple[int, list[float]]:
     """Index of the first step whose Drop share exceeds *min_share*, and the share per candidate.
 
     Candidates start at step *min_baseline* (so the Baseline has that many Acquisitions).
@@ -42,7 +47,7 @@ def event_start(db: np.ndarray, min_baseline: int, drop_db: float, min_share: fl
         raise ValueError(f"need more than {min_baseline} Acquisitions to detect the Event Start, got {db.shape[0]}")
     shares: list[float] = []
     for k in range(min_baseline, db.shape[0]):
-        share = drop_share(db, k, drop_db)
+        share = drop_share(db, k, drop_db, inside)
         shares.append(share)
         if share > min_share:
             return k, shares

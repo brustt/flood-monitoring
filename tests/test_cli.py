@@ -6,7 +6,7 @@ from flood_monitoring import cli
 from flood_monitoring.config import load_event_config
 from flood_monitoring.paths import EventPaths
 
-ORDER = ["download", "stack", "despeckle", "event", "flood-extent", "composite", "export"]
+ORDER = ["download", "stack", "despeckle", "event", "flood-extent", "composite", "merge", "export"]
 
 
 def fake_stages(calls):
@@ -17,6 +17,12 @@ def fake_stages(calls):
         return SimpleNamespace(run=run)
 
     return {name: stage(name) for name in cli.STAGES}
+
+
+@pytest.fixture(autouse=True)
+def no_reexec(monkeypatch):
+    """main() would replace the pytest process with a re-executed CLI."""
+    monkeypatch.setattr(cli, "ensure_clean_environment", lambda argv: None)
 
 
 @pytest.fixture
@@ -35,7 +41,7 @@ def add_subset(paths):
     tif.touch()
 
 
-def test_stage_order_includes_export():
+def test_stage_order_has_merge_between_composite_and_export():
     assert list(cli.STAGES) == ORDER
 
 
@@ -75,3 +81,26 @@ def test_main_defaults_to_saintes_and_reports_missing_input(monkeypatch, tmp_pat
     monkeypatch.setenv("FLOOD_MONITORING_DATA_ROOT", str(tmp_path))
     assert cli.main(["run", "--stage", "export"]) == 1
     assert "run the flood-extent stage first" in capsys.readouterr().err
+
+
+def test_per_series_stages_run_for_every_orbit_and_merge_once(paths, config):
+    from dataclasses import replace
+
+    calls = []
+
+    def stage(name):
+        def run(cfg, p, force=False):
+            calls.append((name, cfg.series.relative_orbits, p.orbit, force))
+
+        return SimpleNamespace(run=run)
+
+    stages = {name: stage(name) for name in cli.STAGES}
+    multi = replace(config, series=replace(config.series, relative_orbits=(8, 110)))
+    cli.run_stages(multi, paths, ["composite", "merge", "export"], force=True, stages=stages)
+    assert calls == [
+        ("composite", (8,), 8, True),
+        ("composite", (110,), 110, True),
+        ("merge", (8, 110), None, True),
+        ("export", (8, 110), None, True),
+    ]
+    assert paths.series_paths(110).processed.is_dir()

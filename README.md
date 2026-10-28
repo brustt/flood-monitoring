@@ -1,0 +1,3 @@
+## GDAL/PROJ environment
+
+Shells that export OTB's `PROJ_LIB`, `GDAL_DATA`, `LD_LIBRARY_PATH`, `GDAL_DRIVER_PATH` or `PYTHONPATH` break GDAL here (`proj.db contains DATABASE.LAYOUT.VERSION.MINOR = 2 whereas a number >= 6 is expected`). The fix lives in the CLI entry point (`src/flood_monitoring/_env.py`): before any stage runs, `flood-monitoring` re-executes itself once with `PYTHONPATH`, `LD_LIBRARY_PATH`, `GDAL_DRIVER_PATH` and `PROJ_LIB` removed, `PROJ_DATA` set to the venv's `pyproj/proj_dir/share/proj` and `GDAL_DATA` set to `gdal-config --datadir`. It must be a re-exec because `LD_LIBRARY_PATH` is read by the dynamic loader at process start. No manual overrides are needed.
