@@ -13,7 +13,7 @@ window:
 
 series:
   collection: sentinel-1-rtc
-  start: 2025-01-01
+  start: 2026-01-01
   end: 2026-03-01
   orbit_state: descending
   instrument_mode: IW
@@ -43,3 +43,7 @@ composite:
   vv: [-20, -3]
   vh: [-26, -9]
   vv_minus_vh: [2, 12]
+
+# Memory ceiling in MB for every stage after download (chunk size, GDAL cache, eo-pipe steps).
+processing:
+  memory_budget_mb: 4096.0

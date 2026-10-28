@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import numpy as np
 import xarray as xr
@@ -13,6 +14,8 @@ from .cube import georeferenced
 from .detection import to_db_lazy
 from .event import acquisition_dates
 from .paths import EventPaths
+
+logger = logging.getLogger(__name__)
 
 NODATA = -9999.0
 BANDS = ("vv", "vh", "vv_minus_vh")
@@ -58,6 +61,13 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
     budget = config.processing.memory_budget_mb
     ds, plan = chunks.open_cube(paths.filtered_cube, budget, bytes_per_date=28, time_chunk=1)
     with ds, chunks.scheduler(plan.workers, budget):
+        missing = [v for v in ("VV", "VH") if v not in ds.data_vars]
+        if missing:
+            logger.warning(
+                "no Composites for %s: the Cube lacks %s, and a Composite needs both VV and VH",
+                config.event, " and ".join(missing),
+            )
+            return
         dates = acquisition_dates(ds["time"].values)
         nodata = ds.attrs.get("nodata")
         vv, vh = georeferenced(ds, "VV"), georeferenced(ds, "VH")

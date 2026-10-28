@@ -70,3 +70,25 @@ def test_killed_forced_run_removes_both_composites(tmp_path, monkeypatch):
     with pytest.raises(KeyboardInterrupt):
         composite.run(config, paths, force=True)
     assert not paths.before_composite.exists() and not paths.after_composite.exists()
+
+
+def test_vv_only_cube_gets_a_warning_and_no_composites(tmp_path, caplog):
+    import json
+
+    import reference_inputs as ri
+    import xarray as xr
+    from flood_monitoring import composite
+
+    config, paths = ri.single_series(tmp_path)
+    with xr.open_dataset(paths.filtered_cube) as full:
+        vv_only = full.drop_vars("VH").load()
+    paths.filtered_cube.unlink()
+    vv_only.to_netcdf(paths.filtered_cube)
+    paths.processed.mkdir(parents=True)
+    paths.summary.write_text(json.dumps({"before": "2026-01-12", "peak": "2026-01-13"}))
+
+    with caplog.at_level("WARNING", logger="flood_monitoring.composite"):
+        composite.run(config, paths)
+
+    assert "lacks VH" in caplog.text
+    assert not paths.before_composite.exists() and not paths.after_composite.exists()

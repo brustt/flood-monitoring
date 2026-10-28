@@ -151,3 +151,18 @@ def test_run_asks_for_missing_inputs(config, paths):
     paths.after_composite.unlink()
     with pytest.raises(FileNotFoundError, match="composite"):
         export.run(config, paths)
+
+
+def test_run_publishes_without_composites(config, paths, caplog):
+    import yaml
+
+    write_project(paths)
+    paths.before_composite.unlink()
+    paths.after_composite.unlink()
+    with caplog.at_level("WARNING", logger="flood_monitoring.export"):
+        export.run(config, paths)
+    assert "no Composites" in caplog.text
+    manifest = yaml.safe_load((paths.publish / f"{config.event}.publish.yaml").read_text())
+    assert [layer["slug"] for layer in manifest["layers"]] == ["flood-extent"]
+    assert "compare" not in manifest
+    assert not (paths.outputs / "s1-before.tif").exists()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import tempfile
@@ -20,6 +21,8 @@ from .paths import EventPaths
 FLOOD_EXTENT_NODATA = 255
 FLOOD_COLOR = "#1f78b4"
 ORBIT_COLORS = ("#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#a65628")
+logger = logging.getLogger(__name__)
+
 COPERNICUS = "Contains modified Copernicus Sentinel data {year}"
 
 
@@ -71,8 +74,13 @@ def orbit_map_layer(series: list[dict], layers_dir: str) -> dict:
     }
 
 
-def event_manifest(config: EventConfig, summary: dict, layers_dir: str | None = None) -> dict:
-    """The ``<event>.publish.yaml`` content. *layers_dir* is where the COGs are, relative to the manifest."""
+def event_manifest(
+    config: EventConfig, summary: dict, layers_dir: str | None = None, composites: bool = True
+) -> dict:
+    """The ``<event>.publish.yaml`` content. *layers_dir* is where the COGs are, relative to the manifest.
+
+    Without *composites* the before/after imagery Layers and the comparison are left out.
+    """
     layers_dir = layers_dir or f"../outputs/{config.event}"
     r = config.composite
     rgb = {"bands": [1, 2, 3], "ranges": [list(r.vv), list(r.vh), list(r.vv_minus_vh)]}
@@ -103,19 +111,23 @@ def event_manifest(config: EventConfig, summary: dict, layers_dir: str | None = 
                 {"value": 1, "color": FLOOD_COLOR, "label": "Flooded"},
             ],
         },
-        imagery("s1-before", "Sentinel-1 before the flood", summary["before"]),
-        imagery("s1-after", "Sentinel-1 at the flood peak", summary["peak"]),
     ]
+    if composites:
+        layers += [
+            imagery("s1-before", "Sentinel-1 before the flood", summary["before"]),
+            imagery("s1-after", "Sentinel-1 at the flood peak", summary["peak"]),
+        ]
     if "series" in summary:
         layers.append(orbit_map_layer(summary["series"], layers_dir))
-    return {
+    manifest = {
         "event": config.event,
         "title": event_title(config.event),
         "start": config.window.start.isoformat(),
         "end": config.window.end.isoformat(),
-        "compare": ["s1-before", "s1-after"],
-        "layers": layers,
     }
+    if composites:
+        manifest["compare"] = ["s1-before", "s1-after"]
+    return {**manifest, "layers": layers}
 
 
 def run(
@@ -123,11 +135,14 @@ def run(
 ) -> None:
     """Always rewrites the outputs: they are small and must match the processed rasters."""
     executed_at = executed_at or datetime.now()
-    sources = {
-        "flood-extent": (paths.flood_extent, "flood-extent"),
-        "s1-before": (paths.before_composite, "composite"),
-        "s1-after": (paths.after_composite, "composite"),
-    }
+    sources = {"flood-extent": (paths.flood_extent, "flood-extent")}
+    # A VV-only Series has no Composites: publish without them. Only one of the two is a broken run.
+    composites = paths.before_composite.exists() or paths.after_composite.exists()
+    if composites:
+        sources["s1-before"] = (paths.before_composite, "composite")
+        sources["s1-after"] = (paths.after_composite, "composite")
+    else:
+        logger.warning("no Composites for %s: publishing the Flood Extent without imagery Layers", config.event)
     for source, stage in sources.values():
         if not source.exists():
             raise FileNotFoundError(f"{source} is missing; run the {stage} stage first")
@@ -158,7 +173,7 @@ def run(
 
     event_yaml = paths.publish / f"{config.event}.publish.yaml"
     layers_dir = Path(os.path.relpath(paths.outputs, paths.publish)).as_posix()
-    manifest = event_manifest(config, summary, layers_dir)
+    manifest = event_manifest(config, summary, layers_dir, composites)
     event_yaml.write_text(yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True))
     print(f"manifest: {event_yaml}")
 
