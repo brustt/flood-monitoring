@@ -48,3 +48,17 @@ def test_partial_nodata_is_fine():
     cube = make_cube(DATES)
     cube["VV"][1, 0, 0] = NODATA
     check_cube(cube, nodata=NODATA)
+
+
+def test_chunked_cube_rejects_all_nan_step():
+    cube = make_cube(DATES)
+    cube["VH"][2] = np.nan
+    with pytest.raises(ValueError, match="2026-01-13.*VH.*no valid pixel"):
+        check_cube(cube.chunk({"y": 2, "x": 2}), nodata=NODATA)
+
+
+def test_chunked_cube_rejects_all_nodata_step():
+    cube = make_cube(DATES)
+    cube["VV"][1] = NODATA
+    with pytest.raises(ValueError, match="2026-01-07.*VV.*no valid pixel"):
+        check_cube(cube.chunk({"y": 2, "x": 2}), nodata=NODATA)
