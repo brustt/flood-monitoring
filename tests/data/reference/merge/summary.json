@@ -1,0 +1,35 @@
+{
+  "event": "synthetic-2026-01",
+  "main_series": 8,
+  "event_start": "2026-01-13",
+  "before": "2026-01-12",
+  "peak": "2026-01-15",
+  "series": [
+    {
+      "relative_orbit": 8,
+      "rank": 1,
+      "coverage_share": 0.692,
+      "event_start": "2026-01-13",
+      "before": "2026-01-12",
+      "peak": "2026-01-15",
+      "flooded_area_km2": {
+        "2026-01-13": 0.1
+      },
+      "flood_extent_km2": 0.1
+    },
+    {
+      "relative_orbit": 110,
+      "rank": 2,
+      "coverage_share": 0.5938,
+      "event_start": "2026-01-14",
+      "before": "2026-01-13",
+      "peak": "2026-01-16",
+      "flooded_area_km2": {
+        "2026-01-14": 0.1
+      },
+      "flood_extent_km2": 0.1
+    }
+  ],
+  "permanent_water_km2": 0.005,
+  "flood_extent_km2": 0.017
+}

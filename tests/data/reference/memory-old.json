@@ -1,0 +1,37 @@
+{
+  "budget_mb": 256.0,
+  "baseline_mb": 259.64453125,
+  "threshold_mb": 643.64453125,
+  "stages": [
+    {
+      "stage": "check_cube",
+      "max_rss_mb": 2901.65625,
+      "returncode": 0,
+      "pass": false
+    },
+    {
+      "stage": "event",
+      "max_rss_mb": 4446.63671875,
+      "returncode": 0,
+      "pass": false
+    },
+    {
+      "stage": "flood-extent",
+      "max_rss_mb": 2658.28515625,
+      "returncode": 0,
+      "pass": false
+    },
+    {
+      "stage": "composite",
+      "max_rss_mb": 1897.625,
+      "returncode": 0,
+      "pass": false
+    },
+    {
+      "stage": "merge",
+      "max_rss_mb": 1735.81640625,
+      "returncode": 0,
+      "pass": false
+    }
+  ]
+}
