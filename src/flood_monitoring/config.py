@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -80,6 +81,13 @@ class EventGrid:
 
 
 @dataclass(frozen=True)
+class Processing:
+    """Memory budget of every stage after download; sets the chunk size and GDAL cache (see chunks.py)."""
+
+    memory_budget_mb: float = 4096.0
+
+
+@dataclass(frozen=True)
 class EventConfig:
     project: str
     event: str
@@ -91,6 +99,7 @@ class EventConfig:
     composite: CompositeRanges = CompositeRanges()
     event_grid: EventGrid = EventGrid()
     aoi_polygon: Polygon | MultiPolygon | None = None  # EPSG:4326; None for a rectangle Area of Interest
+    processing: Processing = Processing()
 
 
 def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
@@ -133,6 +142,7 @@ def load_event_config(event: str, events_dir: Path = EVENTS_DIR) -> EventConfig:
             enl=float(despeckle.get("enl", Despeckle.enl)),
         ),
         event_grid=_event_grid(raw.get("event_grid", {}), path),
+        processing=_processing(raw.get("processing") or {}, path),
         project=raw["project"],
         event=raw["event"],
         area_of_interest=bbox,
@@ -158,6 +168,21 @@ def _event_grid(raw: dict, path: Path) -> EventGrid:
     if not grid.pixel_size > 0:
         raise ValueError(f"{path}: event_grid pixel_size must be positive")
     return grid
+
+
+def _processing(raw: dict, path: Path) -> Processing:
+    unknown = set(raw) - set(Processing.__dataclass_fields__)
+    if unknown:
+        raise ValueError(f"{path}: unknown processing setting(s) {sorted(unknown)}")
+    try:
+        budget = float(raw.get("memory_budget_mb", Processing.memory_budget_mb))
+    except (TypeError, ValueError):
+        raise ValueError(f"{path}: processing memory_budget_mb must be a number") from None
+    if not budget > 0:
+        raise ValueError(f"{path}: processing memory_budget_mb must be positive")
+    if not math.isfinite(budget):
+        raise ValueError(f"{path}: processing memory_budget_mb must be finite")
+    return Processing(memory_budget_mb=budget)
 
 
 def _area_of_interest(raw, path: Path, base: Path):

@@ -1,6 +1,6 @@
 import pytest
 
-from flood_monitoring.config import Detection, load_event_config
+from flood_monitoring.config import Detection, Processing, load_event_config
 
 BASE = """\
 project: p
@@ -93,3 +93,35 @@ def test_missing_river_line_file_is_rejected(tmp_path):
     text = BASE.replace("area_of_interest: [0, 0, 1, 1]", "area_of_interest: {line: nope.geojson, buffer_m: 500}")
     with pytest.raises(FileNotFoundError, match="nope.geojson"):
         load_with_events(tmp_path, text)
+
+
+def test_processing_defaults(tmp_path):
+    assert load(tmp_path).processing == Processing(4096.0)
+
+
+def test_processing_budget_is_read(tmp_path):
+    assert load(tmp_path, "processing:\n  memory_budget_mb: 2048\n").processing.memory_budget_mb == 2048.0
+
+
+def test_processing_null_means_defaults(tmp_path):
+    assert load(tmp_path, "processing:\n").processing == Processing()
+
+
+def test_processing_rejects_non_positive_budget(tmp_path):
+    with pytest.raises(ValueError, match="memory_budget_mb must be positive"):
+        load(tmp_path, "processing:\n  memory_budget_mb: 0\n")
+
+
+def test_processing_rejects_non_numeric_budget(tmp_path):
+    with pytest.raises(ValueError, match="memory_budget_mb must be a number"):
+        load(tmp_path, "processing:\n  memory_budget_mb: lots\n")
+
+
+def test_processing_rejects_infinite_budget(tmp_path):
+    with pytest.raises(ValueError, match="memory_budget_mb must be finite"):
+        load(tmp_path, "processing:\n  memory_budget_mb: .inf\n")
+
+
+def test_processing_rejects_unknown_key(tmp_path):
+    with pytest.raises(ValueError, match=r"unknown processing setting\(s\) \['workers'\]"):
+        load(tmp_path, "processing:\n  workers: 4\n")

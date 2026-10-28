@@ -5,9 +5,9 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from flood_monitoring import flood_extent
+from flood_monitoring import flood_extent, raster
 from flood_monitoring.config import load_event_config
-from flood_monitoring.flood_extent import read_mask
+from flood_monitoring.raster import read_mask
 from flood_monitoring.paths import EventPaths
 
 SIZE = 40
@@ -77,3 +77,41 @@ def test_run_skips_when_flood_extent_exists(paths, capsys):
     flood_extent.run(load_event_config("saintes-2026-02"), paths)
     assert "skip" in capsys.readouterr().out
     assert "peak" not in json.loads(paths.summary.read_text())
+
+
+def test_run_leaves_no_partial_or_scratch_files(paths):
+    flood_extent.run(load_event_config("saintes-2026-02"), paths)
+    assert not list(paths.processed.rglob("*.partial"))
+    assert not paths.sieve_work.exists()
+
+
+def test_leftovers_from_a_killed_run_are_removed(paths):
+    stale = [
+        raster.partial(paths.flood_extent),
+        paths.sieve_work / "raw" / "0.tif",
+        paths.water_mask("2020-01-01"),
+    ]
+    for p in stale:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"")
+    flood_extent.run(load_event_config("saintes-2026-02"), paths)
+    assert not any(p.exists() for p in stale)
+    assert sorted(p.stem for p in paths.water_masks.glob("*.tif")) == ["2026-01-19", "2026-01-25", "2026-01-31"]
+
+
+def test_killed_forced_run_is_redone(paths, monkeypatch, capsys):
+    config = load_event_config("saintes-2026-02")
+    flood_extent.run(config, paths)
+
+    def killed(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as m:
+        m.setattr(raster, "write_partial", killed)
+        with pytest.raises(KeyboardInterrupt):
+            flood_extent.run(config, paths, force=True)
+    assert not paths.flood_extent.exists()
+    capsys.readouterr()
+    flood_extent.run(config, paths)
+    assert "skip" not in capsys.readouterr().out
+    assert read_mask(paths.flood_extent).sum() == 100

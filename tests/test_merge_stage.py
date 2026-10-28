@@ -119,3 +119,83 @@ def test_missing_series_result_names_the_orbit(setup):
     paths.series_paths(110).flood_extent.unlink()
     with pytest.raises(FileNotFoundError, match="relative orbit 110"):
         merge_stage.run(config, paths)
+
+
+def test_merge_run_builds_the_aoi_mask(tmp_path):
+    import reference_inputs as ri
+
+    config, paths = ri.two_series(tmp_path)
+    assert config.aoi_polygon is not None
+    merge_stage.run(config, paths)
+    with rasterio.open(paths.flood_extent) as src:
+        assert 255 in src.read(1)  # pixels outside the polygon
+
+
+def test_merge_removes_scratch(setup):
+    config, paths = setup
+    merge_stage.run(config, paths)
+    assert not paths.merge_work.exists() and not paths.sieve_work.exists()
+    assert not list(paths.processed.rglob("*.partial"))
+
+
+def test_merge_leftovers_from_a_killed_run_are_removed(setup):
+    config, paths = setup
+    stale = [paths.merge_work / "orbit-8" / "x.tif", paths.orbit_map.with_name("orbit-map.tif.partial")]
+    for p in stale:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"")
+    merge_stage.run(config, paths)
+    assert not any(p.exists() for p in stale)
+
+
+def test_killed_forced_merge_is_redone(setup, monkeypatch, capsys):
+    from flood_monitoring import raster
+
+    config, paths = setup
+    merge_stage.run(config, paths)
+
+    def killed(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as m:
+        m.setattr(raster, "write_partial", killed)
+        with pytest.raises(KeyboardInterrupt):
+            merge_stage.run(config, paths, force=True)
+    assert not paths.orbit_map.exists() and not paths.flood_extent.exists()
+    capsys.readouterr()
+    merge_stage.run(config, paths)
+    assert "skip" not in capsys.readouterr().out and paths.flood_extent.exists()
+
+
+def test_large_merge_is_chunk_independent(tmp_path, monkeypatch):
+    import reference_inputs as ri
+    from eo_pipe.io.memory import ChunkPlan
+
+    from flood_monitoring import chunks
+
+    layers = {}
+    for side in (256, 1024):
+        monkeypatch.setattr(chunks, "plan", lambda *args, side=side, **kwargs: ChunkPlan(side, 2))
+        config, paths = ri.two_series(tmp_path / str(side), size=1200, budget_mb=256)  # GDAL splits this warp
+        merge_stage.run(config, paths)
+        layers[side] = {}
+        for p in (paths.flood_extent, paths.permanent_water, paths.before_composite, paths.after_composite,
+                  paths.orbit_map):
+            with rasterio.open(p) as src:
+                layers[side][p.name] = src.read()
+        warped = {}
+        for o in (8, 110):
+            for name in ("before-composite", "after-composite"):
+                out = tmp_path / f"warp-{side}-{o}-{name}.tif"
+                merge_stage.warp(paths.series_paths(o).processed / f"{name}.tif",
+                                 merge_stage.event_grid(config.aoi_polygon, "EPSG:2154", 10.0),
+                                 merge_stage.Resampling.bilinear, out, 256, NODATA)
+                with rasterio.open(out) as src:
+                    warped[o, name] = src.read()
+    for name, data in layers[256].items():
+        assert np.array_equal(data, layers[1024][name]), name
+    assert set(np.unique(layers[256]["orbit-map.tif"])) <= {0, 1, 2}
+    for name in ("before-composite", "after-composite"):
+        merged = layers[256][f"{name}.tif"]
+        from_series = (merged == warped[8, name]) | (merged == warped[110, name]) | (merged == NODATA)
+        assert from_series.all(axis=0).all()  # never a mix of two Series' values

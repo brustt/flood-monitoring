@@ -70,6 +70,11 @@ class EventPaths:
         return self.data_root / "processed" / self.event / "orbit-map.tif"
 
     @property
+    def merge_work(self) -> Path:
+        """Scratch folder of the merge: every Series raster warped to the Event grid; removed after the merge."""
+        return self.data_root / "processed" / self.event / "_merge"
+
+    @property
     def summary(self) -> Path:
         """Event Start, Peak, thresholds and areas, as JSON."""
         return self.processed / "summary.json"

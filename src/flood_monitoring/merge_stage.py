@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 import math
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+import dask
+import dask.array
 import numpy as np
 import rasterio
 import rasterio.warp
+import rioxarray
 import xarray as xr
 from pyproj import Transformer
 from rasterio.transform import Affine, from_origin
@@ -17,10 +21,9 @@ from rasterio.warp import Resampling
 from shapely.geometry import box, mapping
 from shapely.ops import transform as shapely_transform
 
-from .aoi import aoi_mask
+from . import aoi, chunks, raster
 from .composite import NODATA
 from .config import EventConfig
-from .flood_extent import sieve_masks
 from .merge import ORBIT_MAP_NODATA, coverage, fill_composites, merge_flood_extent, rank_series, valid_composite
 from .paths import EventPaths
 
@@ -42,12 +45,13 @@ class Grid:
     def pixel_km2(self) -> float:
         return abs(self.transform.a * self.transform.e) / 1e6
 
-    def template(self) -> xr.DataArray:
-        """Georeferenced (y, x) array on this grid, for the sieve."""
+    def template(self, side: int) -> xr.DataArray:
+        """Georeferenced, lazy (y, x) array on this grid, chunked by *side*; its transform is exactly the grid's."""
         xs = self.transform.c + (np.arange(self.width) + 0.5) * self.transform.a
         ys = self.transform.f + (np.arange(self.height) + 0.5) * self.transform.e
-        da = xr.DataArray(np.zeros(self.shape, "uint8"), dims=("y", "x"), coords={"y": ys, "x": xs})
-        return da.rio.write_crs(self.crs)
+        zeros = dask.array.zeros(self.shape, dtype="uint8", chunks=side)
+        da = xr.DataArray(zeros, dims=("y", "x"), coords={"y": ys, "x": xs})
+        return da.rio.write_crs(self.crs).rio.write_transform(self.transform)
 
 
 def event_grid(polygon, crs, pixel_size: float) -> Grid:
@@ -62,40 +66,42 @@ def event_grid(polygon, crs, pixel_size: float) -> Grid:
     return Grid(crs, from_origin(west, north, pixel_size, pixel_size), height, width)
 
 
-def reproject(path: Path, grid: Grid, resampling: Resampling, nodata: float | None = None) -> np.ndarray:
-    """All bands of the raster at *path* on *grid*, as a (bands, y, x) array filled with *nodata* (or 0)."""
-    with rasterio.open(path) as src:
-        data = src.read()
-        out = np.full((src.count, *grid.shape), 0 if nodata is None else nodata, dtype=data.dtype)
+def warp(path: Path, grid: Grid, resampling: Resampling, out: Path, budget_mb: float, nodata: float | None = None) -> None:
+    """Every band of the raster at *path* warped onto *grid* by GDAL, file to file *out*.
+
+    Uncovered pixels are *nodata* (or 0). GDAL's working buffer is bounded by the budget's GDAL cache share.
+    """
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(path) as src, rasterio.open(
+        out, "w", driver="GTiff", width=grid.width, height=grid.height, count=src.count, dtype=src.dtypes[0],
+        crs=grid.crs, transform=grid.transform, nodata=nodata, tiled=True,
+        blockxsize=chunks.TILE, blockysize=chunks.TILE,
+    ) as dst:
         rasterio.warp.reproject(
-            data,
-            out,
-            src_transform=src.transform,
-            src_crs=src.crs,
-            dst_transform=grid.transform,
-            dst_crs=grid.crs,
-            resampling=resampling,
+            rasterio.band(src, src.indexes),
+            rasterio.band(dst, dst.indexes),
             src_nodata=nodata,
             dst_nodata=nodata,
+            resampling=resampling,
+            warp_mem_limit=chunks.gdal_cache_mb(budget_mb),
         )
-    return out
 
 
-def write_raster(path: Path, data: np.ndarray, grid: Grid, nodata: float) -> None:
-    bands = data if data.ndim == 3 else data[None]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with rasterio.open(
-        path, "w", driver="GTiff", width=grid.width, height=grid.height, count=len(bands),
-        dtype=bands.dtype, crs=grid.crs, transform=grid.transform, nodata=nodata,
-    ) as dst:
-        dst.write(bands)
+def open_on_grid(path: Path, grid: Grid, side: int, mask: bool) -> xr.DataArray:
+    """A raster warped onto *grid*, lazily: boolean (y, x) if *mask*, else a (band, y, x) float32 Composite.
 
-
-def load_composite(path: Path, grid: Grid) -> np.ndarray:
-    """A Composite on the Event grid; a pixel missing in any band is nodata in all."""
-    comp = reproject(path, grid, Resampling.bilinear, NODATA).astype("float32")
-    comp[:, ~valid_composite(comp)] = NODATA
-    return comp
+    Call ``.close()`` on it once computed.
+    """
+    opened = rioxarray.open_rasterio(path, chunks={"band": -1, "y": side, "x": side}, mask_and_scale=False)
+    if opened.shape[-2:] != grid.shape:
+        opened.close()
+        raise ValueError(f"{path}: shape {opened.shape[-2:]} differs from the Event grid's {grid.shape}")
+    template = grid.template(side)
+    da = opened.assign_coords(y=template["y"].values, x=template["x"].values)
+    da = da.squeeze("band", drop=True).astype(bool) if mask else da.astype("float32")
+    da = da.rio.write_crs(grid.crs).rio.write_transform(grid.transform)
+    da.set_close(opened.close)  # derived arrays lose it; left open, the file is closed after GDAL at exit
+    return da
 
 
 def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
@@ -117,41 +123,99 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
         if "peak" not in summaries[-1]:
             raise FileNotFoundError(f"{p.summary} has no Peak; run the flood-extent stage first")
 
+    layers = [paths.orbit_map, paths.flood_extent, paths.permanent_water, paths.before_composite, paths.after_composite]
+    raster.clear(layers, [paths.merge_work, paths.sieve_work])  # the skip sentinels first, then leftovers
+
     polygon = config.aoi_polygon or box(*config.area_of_interest)
     crs = config.event_grid.crs
     if crs is None:
         with rasterio.open(series[0].flood_extent) as src:
             crs = src.crs
     grid = event_grid(polygon, crs, config.event_grid.pixel_size)
-    aoi = aoi_mask(polygon, grid.crs, grid.transform, grid.shape)
-
-    nearest = Resampling.nearest
-    extents = [reproject(p.flood_extent, grid, nearest)[0].astype(bool) for p in series]
-    permanents = [reproject(p.permanent_water, grid, nearest)[0].astype(bool) for p in series]
-    befores = [load_composite(p.before_composite, grid) for p in series]
-    afters = [load_composite(p.after_composite, grid) for p in series]
-
-    footprints = [valid_composite(b) & valid_composite(a) for b, a in zip(befores, afters)]
-    order = rank_series(footprints, aoi)
-    shares = coverage(footprints, aoi)
-    main = order[0]
-    print(f"Main Series: relative orbit {orbits[main]} ({shares[main]:.1%} of the Area of Interest)")
+    budget = config.processing.memory_budget_mb
+    plan = chunks.plan(budget, 26 * len(series) + 30, grid.height, grid.width)
 
     rules = config.detection
-    extent = merge_flood_extent(extents, aoi)
-    extent = sieve_masks(extent[None], grid.template(), paths.sieve_work, rules.sieve_size, rules.sieve_connectedness)[0]
-    extent &= aoi
-    permanent = np.logical_or.reduce(permanents) & aoi
-    before, orbit_map = fill_composites(befores, order, aoi)
-    after, same_map = fill_composites(afters, order, aoi)
-    if not np.array_equal(orbit_map, same_map):  # priority is by footprint, so the seam must match
+    with chunks.scheduler(plan.workers, budget):
+        warped = []
+        for orbit, p in zip(orbits, series):
+            work = paths.merge_work / f"orbit-{orbit}"
+            files = {}
+            for name, src, resampling, nodata in (
+                ("flood-extent", p.flood_extent, Resampling.nearest, None),
+                ("permanent-water", p.permanent_water, Resampling.nearest, None),
+                ("before-composite", p.before_composite, Resampling.bilinear, NODATA),
+                ("after-composite", p.after_composite, Resampling.bilinear, NODATA),
+            ):
+                files[name] = work / f"{name}.tif"
+                warp(src, grid, resampling, files[name], budget, nodata)
+            warped.append(files)
+
+        opened = {
+            name: [open_on_grid(f[name], grid, plan.side, mask=not name.endswith("composite"))
+                   for f in warped]
+            for name in ("flood-extent", "permanent-water", "before-composite", "after-composite")
+        }
+        try:
+            extents, permanents = opened["flood-extent"], opened["permanent-water"]
+            # A Composite pixel missing in any band is nodata in all.
+            befores, afters = (
+                [c.where(valid_composite(c), NODATA) for c in opened[name]]
+                for name in ("before-composite", "after-composite")
+            )
+            # never name this local aoi: it would shadow the module for the whole function
+            inside = aoi.mask_like(polygon, grid.template(plan.side))
+
+            footprints = [valid_composite(b) & valid_composite(a) for b, a in zip(befores, afters)]
+            counts, total = dask.compute([(f & inside).sum() for f in footprints], inside.sum())
+            shares = coverage([int(c) for c in counts], int(total))
+            order = rank_series(shares)
+            main = order[0]
+            print(f"Main Series: relative orbit {orbits[main]} ({shares[main]:.1%} of the Area of Interest)")
+
+            sieved = raster.sieve(
+                [merge_flood_extent(extents, inside)], grid.crs, paths.sieve_work, rules.sieve_size,
+                rules.sieve_connectedness, transform=grid.transform,
+            )[0]
+            sieved_extent = raster.open_mask(sieved, inside, plan.side)
+            opened["sieved"] = [sieved_extent]
+            extent = sieved_extent & inside
+            permanent = merge_flood_extent(permanents, inside)
+            before, orbit_map = fill_composites(befores, order, inside)
+            after, same_map = fill_composites(afters, order, inside)
+
+            def nodata_outside(mask: xr.DataArray) -> xr.DataArray:
+                return xr.where(inside, mask.astype("uint8"), np.uint8(FLOOD_EXTENT_NODATA))
+
+            def layer(data: xr.DataArray, path: Path, dtype: str, nodata: float) -> raster.Raster:
+                return raster.Raster(data, path, dtype, grid.crs, nodata, transform=grid.transform)
+
+            # One pass per Layer: in a single pass, dask keeps the intermediates the Layers share (masks of
+            # the priority fill, the opened Series rasters) for the whole grid. The warped inputs are local files.
+            for data, path, dtype, nodata in (
+                (nodata_outside(extent), paths.flood_extent, "uint8", FLOOD_EXTENT_NODATA),
+                (nodata_outside(permanent), paths.permanent_water, "uint8", FLOOD_EXTENT_NODATA),
+                (before, paths.before_composite, "float32", NODATA),
+                (after, paths.after_composite, "float32", NODATA),
+                (orbit_map, paths.orbit_map, "uint8", ORBIT_MAP_NODATA),
+            ):
+                raster.write_partial([layer(data, path, dtype, nodata)])
+            seam_differs, n_permanent, n_extent = dask.compute(
+                (orbit_map != same_map).any(),  # priority is by footprint, so the seam must match
+                permanent.sum(),
+                extent.sum(),
+            )
+        finally:
+            for arrays in opened.values():
+                for da in arrays:
+                    da.close()
+    if bool(seam_differs):
+        raster.clear(layers)
         raise RuntimeError("Before and After Composites would have different seams")
 
-    write_raster(paths.flood_extent, np.where(aoi, extent, FLOOD_EXTENT_NODATA).astype("uint8"), grid, FLOOD_EXTENT_NODATA)
-    write_raster(paths.permanent_water, np.where(aoi, permanent, FLOOD_EXTENT_NODATA).astype("uint8"), grid, FLOOD_EXTENT_NODATA)
-    write_raster(paths.before_composite, before, grid, NODATA)
-    write_raster(paths.after_composite, after, grid, NODATA)
-    write_raster(paths.orbit_map, orbit_map, grid, ORBIT_MAP_NODATA)
+    shutil.rmtree(paths.merge_work)
+    shutil.rmtree(paths.sieve_work)
+    raster.commit([paths.permanent_water, paths.before_composite, paths.after_composite])
     paths.aoi_polygon.write_text(
         json.dumps({"type": "Feature", "properties": {}, "geometry": mapping(polygon)}) + "\n"
     )
@@ -176,8 +240,9 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
             }
             for rank, i in enumerate(order, start=1)
         ],
-        "permanent_water_km2": round(int(permanent.sum()) * grid.pixel_km2, 3),
-        "flood_extent_km2": round(int(extent.sum()) * grid.pixel_km2, 3),
+        "permanent_water_km2": round(int(n_permanent) * grid.pixel_km2, 3),
+        "flood_extent_km2": round(int(n_extent) * grid.pixel_km2, 3),
     }
-    paths.summary.write_text(json.dumps(summary, indent=2) + "\n")
+    raster.write_json(paths.summary, summary)
+    raster.commit([paths.orbit_map, paths.flood_extent])  # Flood Extent last: with the Orbit Map, the skip sentinel
     print(f"Flood Extent {summary['flood_extent_km2']} km2 over {len(orbits)} Series")
