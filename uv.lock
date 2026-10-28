@@ -681,7 +681,7 @@ dev = [
 [[package]]
 name = "eo-stac"
 version = "0.1.0"
-source = { editable = "../eo-stac" }
+source = { git = "https://github.com/brustt/eo-stac?branch=main#e8bc12f97618d3eba6498a7308850b661d985fba" }
 dependencies = [
     { name = "folium" },
     { name = "geopandas" },
@@ -695,40 +695,10 @@ dependencies = [
     { name = "rasterio" },
     { name = "rich" },
     { name = "rioxarray" },
-    { name = "rootutils" },
     { name = "shapely" },
     { name = "tqdm" },
     { name = "xarray" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "folium", specifier = ">=0.17.0" },
-    { name = "geopandas", specifier = ">=1.0.0" },
-    { name = "httpx", specifier = ">=0.27.0" },
-    { name = "ipywidgets", specifier = ">=8.1.8" },
-    { name = "pillow", specifier = ">=10.0.0" },
-    { name = "planetary-computer", specifier = ">=1.0.0" },
-    { name = "planetary-computer", marker = "extra == 'bench'", specifier = ">=1.0.0" },
-    { name = "pystac", specifier = ">=1.10.0" },
-    { name = "pystac-client", specifier = ">=0.8.0" },
-    { name = "pytest", specifier = ">=9.0.2" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0.0" },
-    { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.14.0" },
-    { name = "rasterio", specifier = ">=1.3" },
-    { name = "responses", marker = "extra == 'dev'", specifier = ">=0.25.0" },
-    { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21.0" },
-    { name = "rich", specifier = ">=13.0.0" },
-    { name = "rioxarray", specifier = ">=0.17.0" },
-    { name = "rootutils", specifier = ">=1.0.7" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4.0" },
-    { name = "shapely", specifier = ">=2.0.0" },
-    { name = "tqdm", specifier = ">=4.66.0" },
-    { name = "xarray", specifier = ">=2025.6.1" },
-]
-provides-extras = ["dev", "bench"]
 
 [[package]]
 name = "executing"
@@ -800,7 +770,7 @@ notebook = [
 [package.metadata]
 requires-dist = [
     { name = "eo-pipe", editable = "../eo-pipe" },
-    { name = "eo-stac", editable = "../eo-stac" },
+    { name = "eo-stac", git = "https://github.com/brustt/eo-stac?branch=main" },
     { name = "geopandas" },
     { name = "platform-publish", git = "https://github.com/brustt/platform-publish?tag=v0.1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
