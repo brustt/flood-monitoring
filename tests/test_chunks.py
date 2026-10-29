@@ -141,7 +141,7 @@ def test_stack_and_despeckle_pass_budget_to_eo_pipe(tmp_path, monkeypatch):
     monkeypatch.setattr(PipelineComposition, "add_step", add_step)
     monkeypatch.setattr(PipelineComposition, "run", run)
     config, paths = ri.single_series_config(tmp_path, budget_mb=777)
-    subset = paths.raw / "sentinel-1-rtc" / "2026-01-01" / "item" / "vv.tif"
+    subset = paths.raw / "sentinel-1-rtc" / "2026-01-01" / "item" / "item_vv_sub-abc.tif"
     subset.parent.mkdir(parents=True)
     subset.touch()
     with pytest.raises(Stop):
