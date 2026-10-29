@@ -15,6 +15,7 @@ import rasterio.shutil
 import yaml
 from platform_publish import validate
 
+from . import raster
 from .config import EventConfig
 from .paths import EventPaths
 
@@ -44,6 +45,10 @@ def write_cog(src: Path, dst: Path, categorical: bool, nodata: float | None = No
             dst,
             driver="COG",
             BLOCKSIZE=256,
+            COMPRESS="DEFLATE",
+            LEVEL=raster.ZLEVEL,
+            BIGTIFF="IF_SAFER",
+            PREDICTOR="YES",  # GDAL picks 2 for integers and 3 for floats; overviews use the same compression
             OVERVIEW_RESAMPLING="NEAREST" if categorical else "AVERAGE",
         )
 

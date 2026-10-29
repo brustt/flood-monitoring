@@ -20,6 +20,8 @@ from rasterio.transform import Affine
 
 from .chunks import TILE
 
+ZLEVEL = 6  # zlib default; 9 gains a few percent for several times the write time
+
 
 @dataclass(frozen=True)
 class Raster:
@@ -37,6 +39,11 @@ class Raster:
 def partial(path: Path) -> Path:
     """Where *path* is written before :func:`commit` renames it."""
     return path.with_name(path.name + ".partial")
+
+
+def predictor(dtype: str) -> int:
+    """DEFLATE predictor: horizontal differencing (2) for integers, floating point (3) for floats."""
+    return 3 if np.issubdtype(np.dtype(dtype), np.floating) else 2
 
 
 def _prepared(r: Raster) -> xr.DataArray:
@@ -65,6 +72,7 @@ def write_partial(rasters: list[Raster], *extra) -> tuple:
         writes.append(
             _prepared(r).rio.to_raster(
                 target, driver="GTiff", dtype=r.dtype, tiled=True, blockxsize=TILE, blockysize=TILE,
+                compress="deflate", zlevel=ZLEVEL, predictor=predictor(r.dtype), bigtiff="if_safer",
                 lock=threading.Lock(), compute=False, recalc_transform=r.transform is None,
             )
         )
