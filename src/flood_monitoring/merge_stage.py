@@ -22,7 +22,7 @@ from shapely.geometry import box, mapping
 from shapely.ops import transform as shapely_transform
 
 from . import aoi, chunks, raster
-from .composite import NODATA
+from .composite import NODATA, SCALE, STORED_NODATA, decode, encode
 from .config import EventConfig
 from .merge import ORBIT_MAP_NODATA, coverage, fill_composites, merge_flood_extent, rank_series, valid_composite
 from .paths import EventPaths
@@ -88,7 +88,7 @@ def warp(path: Path, grid: Grid, resampling: Resampling, out: Path, budget_mb: f
 
 
 def open_on_grid(path: Path, grid: Grid, side: int, mask: bool) -> xr.DataArray:
-    """A raster warped onto *grid*, lazily: boolean (y, x) if *mask*, else a (band, y, x) float32 Composite.
+    """A raster warped onto *grid*, lazily: boolean (y, x) if *mask*, else a (band, y, x) float32 dB Composite (decoded from the int16 file).
 
     Call ``.close()`` on it once computed.
     """
@@ -98,7 +98,7 @@ def open_on_grid(path: Path, grid: Grid, side: int, mask: bool) -> xr.DataArray:
         raise ValueError(f"{path}: shape {opened.shape[-2:]} differs from the Event grid's {grid.shape}")
     template = grid.template(side)
     da = opened.assign_coords(y=template["y"].values, x=template["x"].values)
-    da = da.squeeze("band", drop=True).astype(bool) if mask else da.astype("float32")
+    da = da.squeeze("band", drop=True).astype(bool) if mask else decode(da)
     da = da.rio.write_crs(grid.crs).rio.write_transform(grid.transform)
     da.set_close(opened.close)  # derived arrays lose it; left open, the file is closed after GDAL at exit
     return da
@@ -144,8 +144,8 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
             for name, src, resampling, nodata in (
                 ("flood-extent", p.flood_extent, Resampling.nearest, None),
                 ("permanent-water", p.permanent_water, Resampling.nearest, None),
-                ("before-composite", p.before_composite, Resampling.bilinear, NODATA),
-                ("after-composite", p.after_composite, Resampling.bilinear, NODATA),
+                ("before-composite", p.before_composite, Resampling.bilinear, STORED_NODATA),
+                ("after-composite", p.after_composite, Resampling.bilinear, STORED_NODATA),
             ):
                 files[name] = work / f"{name}.tif"
                 warp(src, grid, resampling, files[name], budget, nodata)
@@ -188,15 +188,16 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
                 return xr.where(inside, mask.astype("uint8"), np.uint8(FLOOD_EXTENT_NODATA))
 
             def layer(data: xr.DataArray, path: Path, dtype: str, nodata: float) -> raster.Raster:
-                return raster.Raster(data, path, dtype, grid.crs, nodata, transform=grid.transform)
+                scale = SCALE if dtype == "int16" else None
+                return raster.Raster(data, path, dtype, grid.crs, nodata, transform=grid.transform, scale=scale)
 
             # One pass per Layer: in a single pass, dask keeps the intermediates the Layers share (masks of
             # the priority fill, the opened Series rasters) for the whole grid. The warped inputs are local files.
             for data, path, dtype, nodata in (
                 (nodata_outside(extent), paths.flood_extent, "uint8", FLOOD_EXTENT_NODATA),
                 (nodata_outside(permanent), paths.permanent_water, "uint8", FLOOD_EXTENT_NODATA),
-                (before, paths.before_composite, "float32", NODATA),
-                (after, paths.after_composite, "float32", NODATA),
+                (encode(before), paths.before_composite, "int16", STORED_NODATA),
+                (encode(after), paths.after_composite, "int16", STORED_NODATA),
                 (orbit_map, paths.orbit_map, "uint8", ORBIT_MAP_NODATA),
             ):
                 raster.write_partial([layer(data, path, dtype, nodata)])

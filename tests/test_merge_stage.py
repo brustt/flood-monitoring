@@ -8,7 +8,7 @@ from pyproj import Transformer
 from rasterio.transform import from_origin
 
 from flood_monitoring import merge_stage
-from flood_monitoring.composite import NODATA
+from flood_monitoring.composite import SCALE, STORED_NODATA
 from flood_monitoring.config import EventGrid, load_event_config
 from flood_monitoring.paths import EventPaths
 
@@ -52,14 +52,14 @@ def setup(tmp_path):
         valid[:, valid_cols] = True
 
         def comp(value):
-            return np.where(valid, np.float32(value), np.float32(NODATA))[None].repeat(3, 0)
+            return np.where(valid, np.int16(round(value / SCALE)), np.int16(STORED_NODATA))[None].repeat(3, 0)
 
         flooded = np.zeros((SIZE, SIZE), "uint8")
         flooded[10:20, flooded_cols] = 1
         write(p.flood_extent, flooded, None)
         write(p.permanent_water, np.zeros((SIZE, SIZE), "uint8"), None)
-        write(p.before_composite, comp(before_value), NODATA)
-        write(p.after_composite, comp(before_value - 1), NODATA)
+        write(p.before_composite, comp(before_value), STORED_NODATA)
+        write(p.after_composite, comp(before_value - 1), STORED_NODATA)
         p.summary.write_text(
             json.dumps(
                 {
@@ -91,7 +91,8 @@ def test_merge_writes_global_layers_orbit_map_and_summary(setup):
         orbit_map = src.read(1)
     assert orbit_map[20, 5] == 1 and orbit_map[20, 35] == 2  # Main Series, then the fill
     with rasterio.open(paths.before_composite) as src:
-        before = src.read(1)
+        before = src.read(1) * SCALE
+        assert src.dtypes[0] == "int16" and src.nodata == STORED_NODATA and src.scales[0] == SCALE
     assert before[20, 5] == pytest.approx(-10) and before[20, 35] == pytest.approx(-20)  # no averaging
     assert before[20, 25] == pytest.approx(-10)  # the overlap goes to the Main Series
 
@@ -189,7 +190,7 @@ def test_large_merge_is_chunk_independent(tmp_path, monkeypatch):
                 out = tmp_path / f"warp-{side}-{o}-{name}.tif"
                 merge_stage.warp(paths.series_paths(o).processed / f"{name}.tif",
                                  merge_stage.event_grid(config.aoi_polygon, "EPSG:2154", 10.0),
-                                 merge_stage.Resampling.bilinear, out, 256, NODATA)
+                                 merge_stage.Resampling.bilinear, out, 256, STORED_NODATA)
                 with rasterio.open(out) as src:
                     warped[o, name] = src.read()
     for name, data in layers[256].items():
@@ -197,5 +198,5 @@ def test_large_merge_is_chunk_independent(tmp_path, monkeypatch):
     assert set(np.unique(layers[256]["orbit-map.tif"])) <= {0, 1, 2}
     for name in ("before-composite", "after-composite"):
         merged = layers[256][f"{name}.tif"]
-        from_series = (merged == warped[8, name]) | (merged == warped[110, name]) | (merged == NODATA)
+        from_series = (merged == warped[8, name]) | (merged == warped[110, name]) | (merged == STORED_NODATA)
         assert from_series.all(axis=0).all()  # never a mix of two Series' values

@@ -119,8 +119,8 @@ def event_manifest(
     ]
     if composites:
         layers += [
-            imagery("s1-before", "Sentinel-1 before the flood", summary["before"]),
-            imagery("s1-after", "Sentinel-1 at the flood peak", summary["peak"]),
+            imagery("s1-before-composite", "Sentinel-1 before the flood", summary["before"]),
+            imagery("s1-after-composite", "Sentinel-1 at the flood peak", summary["peak"]),
         ]
     if "series" in summary:
         layers.append(orbit_map_layer(summary["series"], layers_dir))
@@ -131,7 +131,7 @@ def event_manifest(
         "end": config.window.end.isoformat(),
     }
     if composites:
-        manifest["compare"] = ["s1-before", "s1-after"]
+        manifest["compare"] = ["s1-before-composite", "s1-after-composite"]
     return {**manifest, "layers": layers}
 
 
@@ -144,8 +144,8 @@ def run(
     # A VV-only Series has no Composites: publish without them. Only one of the two is a broken run.
     composites = paths.before_composite.exists() or paths.after_composite.exists()
     if composites:
-        sources["s1-before"] = (paths.before_composite, "composite")
-        sources["s1-after"] = (paths.after_composite, "composite")
+        sources["s1-before-composite"] = (paths.before_composite, "composite")
+        sources["s1-after-composite"] = (paths.after_composite, "composite")
     else:
         logger.warning("no Composites for %s: publishing the Flood Extent without imagery Layers", config.event)
     for source, stage in sources.values():

@@ -20,7 +20,7 @@ from shapely.geometry import Polygon, box
 from shapely.ops import transform as shapely_transform
 
 from flood_monitoring import config as config_module
-from flood_monitoring.composite import NODATA
+from flood_monitoring.composite import SCALE, STORED_NODATA
 from flood_monitoring.config import EventConfig, EventGrid, Series, Window
 from flood_monitoring.paths import EventPaths
 
@@ -189,11 +189,11 @@ def write_series(
     valid[:, _i(valid_cols[0], size) : _i(valid_cols[1], size)] = True
 
     def composite(vv: float, vh: float) -> np.ndarray:
-        bands = np.array([vv, vh, vv - vh], dtype="float32")[:, None, None]
-        return np.where(valid, bands, np.float32(NODATA)).astype("float32")
+        bands = np.round(np.array([vv, vh, vv - vh]) / SCALE).astype("int16")[:, None, None]
+        return np.where(valid, bands, np.int16(STORED_NODATA)).astype("int16")
 
-    _write(paths.before_composite, composite(*before), transform, NODATA)
-    _write(paths.after_composite, composite(*after), transform, NODATA)
+    _write(paths.before_composite, composite(*before), transform, STORED_NODATA)
+    _write(paths.after_composite, composite(*after), transform, STORED_NODATA)
     r0, r1, c0, c1 = (_i(f, size) for f in flood_box)
     flooded = np.zeros((size, size), "uint8")
     flooded[r0:r1, c0:c1] = 1

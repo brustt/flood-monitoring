@@ -10,8 +10,11 @@ from rasterio.crs import CRS
 
 import reference_inputs as ri
 from flood_monitoring import chunks, composite, event, flood_extent, merge_stage
+from flood_monitoring.composite import NODATA, SCALE, STORED_NODATA
 
 REFERENCE = Path(__file__).parent / "data" / "reference"
+# The reference was made with float32 dB Composites; they are now int16 hundredths of a dB.
+INT16_COMPOSITES = {"before-composite.tif", "after-composite.tif"}
 PUBLISHED = {"flood-extent.tif", "before-composite.tif", "after-composite.tif", "orbit-map.tif"}
 
 
@@ -37,10 +40,18 @@ def assert_matches(reference: Path, processed: Path, summary: Path) -> None:
     with np.load(reference / "arrays.npz") as expected:
         assert sorted(arrays) == sorted(expected.files)
         for key, data in arrays.items():
-            assert np.array_equal(data, expected[key]), key
+            if key in INT16_COMPOSITES:
+                assert data.dtype == np.int16, key
+                nodata = data == STORED_NODATA
+                assert np.array_equal(nodata, expected[key] == NODATA), key
+                np.testing.assert_allclose(data[~nodata] * SCALE, expected[key][~nodata], atol=SCALE / 2 + 1e-6)
+            else:
+                assert np.array_equal(data, expected[key]), key
     for key, m in meta.items():
         e = expected_meta[key]
         assert CRS.from_wkt(m["crs"]) == CRS.from_wkt(e["crs"]), key
+        if key in INT16_COMPOSITES:
+            e = {**e, "dtype": "int16", "nodata": STORED_NODATA}
         assert (m["transform"], m["dtype"], m["nodata"], m["count"]) == (
             e["transform"], e["dtype"], e["nodata"], e["count"],
         ), key

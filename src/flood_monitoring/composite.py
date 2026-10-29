@@ -17,7 +17,9 @@ from .paths import EventPaths
 
 logger = logging.getLogger(__name__)
 
-NODATA = -9999.0
+NODATA = -9999.0  # in memory, dB float32
+STORED_NODATA = -32768  # in the files, int16
+SCALE = 0.01  # dB per stored unit: files hold round(dB / SCALE)
 BANDS = ("vv", "vh", "vv_minus_vh")
 
 
@@ -30,6 +32,18 @@ def composite_bands(vv: xr.DataArray, vh: xr.DataArray, nodata: float | None = N
     vv_db, vh_db = to_db_lazy(vv, nodata), to_db_lazy(vh, nodata)
     out = xr.concat([vv_db, vh_db, vv_db - vh_db], dim="band").assign_coords(band=list(BANDS))
     return out.where(np.isfinite(out).all("band"), NODATA).astype("float32")
+
+
+def encode(composite: xr.DataArray) -> xr.DataArray:
+    """int16 of a dB float32 Composite for the files: :data:`NODATA` becomes :data:`STORED_NODATA`."""
+    info = np.iinfo("int16")
+    scaled = np.clip(np.round(composite / SCALE), info.min + 1, info.max)  # -32768 is reserved for nodata
+    return xr.where(composite == NODATA, STORED_NODATA, scaled).astype("int16")
+
+
+def decode(stored: xr.DataArray) -> xr.DataArray:
+    """dB float32 of an int16 Composite read from a file: :data:`STORED_NODATA` becomes :data:`NODATA`."""
+    return xr.where(stored == STORED_NODATA, NODATA, stored.astype("float32") * np.float32(SCALE)).astype("float32")
 
 
 def render_rgb(composite: np.ndarray, ranges: dict[str, tuple[float, float]]) -> np.ndarray:
@@ -76,7 +90,10 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
             i = dates.index(day)
             comp = composite_bands(vv.isel(time=i, drop=True), vh.isel(time=i, drop=True), nodata)
             rasters.append(
-                raster.Raster(comp, targets[name], "float32", vv.rio.crs, NODATA, "VV dB, VH dB, VV minus VH dB")
+                raster.Raster(
+                    encode(comp), targets[name], "int16", vv.rio.crs, STORED_NODATA, "VV dB, VH dB, VV minus VH dB",
+                    scale=SCALE,
+                )
             )
         raster.write_partial(rasters)
     raster.commit(list(targets.values()))

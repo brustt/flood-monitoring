@@ -33,7 +33,7 @@ def mask(seed=0):
 
 
 def composite(seed=0):
-    return np.random.default_rng(seed).random((3, SIZE, SIZE)) * 10 - 20
+    return np.round((np.random.default_rng(seed).random((3, SIZE, SIZE)) * 10 - 20) / 0.01)
 
 
 @pytest.fixture
@@ -41,8 +41,8 @@ def paths(tmp_path):
     p = EventPaths(event="saintes-2026-02", data_root=tmp_path / "data", repo_root=tmp_path / "repo")
     p.ensure()
     write_raster(p.flood_extent, mask(), "uint8", None)
-    write_raster(p.before_composite, composite(1), "float32", -9999.0)
-    write_raster(p.after_composite, composite(2), "float32", -9999.0)
+    write_raster(p.before_composite, composite(1), "int16", -32768)
+    write_raster(p.after_composite, composite(2), "int16", -32768)
     p.summary.write_text(json.dumps(SUMMARY))
     return p
 
@@ -60,11 +60,11 @@ def test_manifest_dates_and_window_come_from_config_and_summary(config):
     assert m["event"] == "saintes-2026-02"
     assert m["title"] == "Saintes flood, February 2026"
     assert (m["start"], m["end"]) == ("2026-02-01", "2026-03-01")
-    assert m["compare"] == ["s1-before", "s1-after"]
+    assert m["compare"] == ["s1-before-composite", "s1-after-composite"]
     layers = {l["slug"]: l for l in m["layers"]}
-    assert list(layers) == ["flood-extent", "s1-before", "s1-after"]
-    assert layers["s1-before"]["acquired"] == "2026-01-30"
-    assert layers["s1-after"]["acquired"] == "2026-02-23"
+    assert list(layers) == ["flood-extent", "s1-before-composite", "s1-after-composite"]
+    assert layers["s1-before-composite"]["acquired"] == "2026-01-30"
+    assert layers["s1-after-composite"]["acquired"] == "2026-02-23"
 
 
 def test_manifest_layer_roles_hints_and_attribution(config):
@@ -74,7 +74,7 @@ def test_manifest_layer_roles_hints_and_attribution(config):
     assert [c["value"] for c in extent["categories"]] == [0, 1]
     assert extent["categories"][0]["transparent"] is True
     assert extent["categories"][1] == {"value": 1, "color": "#1f78b4", "label": "Flooded"}
-    for slug in ("s1-before", "s1-after"):
+    for slug in ("s1-before-composite", "s1-after-composite"):
         layer = layers[slug]
         assert layer["role"] == "imagery"
         assert "Copernicus" in layer["attribution"]
@@ -96,17 +96,20 @@ def test_flood_extent_cog_is_uint8_nodata_255_with_nearest_overviews(tmp_path):
 
 def test_composite_cog_keeps_three_bands_and_nodata(tmp_path):
     src, dst = tmp_path / "src.tif", tmp_path / "out.tif"
-    write_raster(src, composite(), "float32", -9999.0)
+    write_raster(src, composite(), "int16", -32768)
+    with rasterio.open(src, "r+") as r:
+        r.scales = (0.01,) * 3
     export.write_cog(src, dst, categorical=False)
     with rasterio.open(dst) as r:
-        assert r.count == 3 and r.nodata == -9999.0 and r.overviews(1)
+        assert r.count == 3 and r.nodata == -32768 and r.overviews(1)
+        assert r.dtypes[0] == "int16" and r.scales == (0.01,) * 3
 
 
 def test_run_exports_validates_and_archives(config, paths):
     write_project(paths)
     export.run(config, paths, executed_at=datetime(2026, 10, 13, 9, 30, 0))
     archive = paths.data_root / "outputs" / "20261013T093000" / "saintes-2026-02"
-    for name in ("flood-extent", "s1-before", "s1-after"):
+    for name in ("flood-extent", "s1-before-composite", "s1-after-composite"):
         assert (paths.outputs / f"{name}.tif").exists()
         assert (archive / f"{name}.tif").exists()
     assert (paths.publish / "saintes-2026-02.publish.yaml").exists()
@@ -165,4 +168,4 @@ def test_run_publishes_without_composites(config, paths, caplog):
     manifest = yaml.safe_load((paths.publish / f"{config.event}.publish.yaml").read_text())
     assert [layer["slug"] for layer in manifest["layers"]] == ["flood-extent"]
     assert "compare" not in manifest
-    assert not (paths.outputs / "s1-before.tif").exists()
+    assert not (paths.outputs / "s1-before-composite.tif").exists()

@@ -92,3 +92,12 @@ def test_vv_only_cube_gets_a_warning_and_no_composites(tmp_path, caplog):
 
     assert "lacks VH" in caplog.text
     assert not paths.before_composite.exists() and not paths.after_composite.exists()
+
+
+def test_encode_decode_round_trip_keeps_hundredths_of_a_db_and_nodata():
+    from flood_monitoring.composite import STORED_NODATA, decode, encode
+
+    db = xr.DataArray(np.array([[[-10.004, -20.0, NODATA]]], dtype="float32"))
+    stored = encode(db)
+    assert stored.dtype == np.int16 and stored.values.tolist() == [[[-1000, -2000, STORED_NODATA]]]
+    np.testing.assert_allclose(decode(stored).values, [[[-10.0, -20.0, NODATA]]], atol=1e-4)

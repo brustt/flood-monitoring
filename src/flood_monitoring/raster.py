@@ -34,6 +34,7 @@ class Raster:
     nodata: float | None = None
     long_name: str | None = None
     transform: Affine | None = None  # exact transform to write; None derives it from the coords
+    scale: float | None = None  # GDAL scale tag: stored value times *scale* is the physical value
 
 
 def partial(path: Path) -> Path:
@@ -55,6 +56,8 @@ def _prepared(r: Raster) -> xr.DataArray:
     da = da.rio.write_crs(r.crs)
     if r.nodata is not None:
         da = da.rio.write_nodata(r.nodata)
+    if r.scale is not None:
+        da.attrs["scale_factor"], da.attrs["add_offset"] = r.scale, 0.0
     if r.long_name is not None:
         da.attrs["long_name"] = r.long_name
     if r.transform is not None:
