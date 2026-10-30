@@ -1,3 +1,33 @@
+# flood-monitoring
+
+Maps the extent of a flood from a time series of Sentinel-1 radar images and prepares the result for the brustt.xyz Platform.
+
+Open water reflects radar away, so flooded pixels turn dark. The pipeline downloads the Sentinel-1 passes over an Area of Interest, removes speckle, detects when the flood starts, classifies water on every date since, and subtracts permanent water. The result is a Flood Extent raster plus before/after radar pictures, exported as COGs with a manifest for the Platform.
+
+## Quick start
+
+```bash
+uv sync
+uv run flood-monitoring show saintes-2026-02             # config and resolved paths
+uv run flood-monitoring run saintes-2026-02              # download to export
+uv run flood-monitoring run saintes-2026-02 --stage event # one stage
+uv run flood-monitoring run saintes-2026-02 --force       # redo stages whose output exists
+uv run pytest
+```
+
+Events are described in `events/<event>.yaml`. Data is kept outside the repo under `$FLOOD_MONITORING_DATA_ROOT` (default `~/Documents/Projects/data/flood-monitoring`); final Layers go to `outputs/<event>/` and the Platform manifest to `publish/`.
+
+## Pipeline
+
+`download` → `stack` → `despeckle` → `event` → `flood-extent` → `composite` → `merge` (multi-orbit only) → `export`
+
+## Documentation
+
+- [`docs/overview.md`](docs/overview.md): the workflow, configuration, skip/resume rules, file layout.
+- Stage by stage: [ingest](docs/pipeline/1-ingest.md) (download, stack, despeckle), [detection](docs/pipeline/2-detection.md) (event, flood-extent), [composite](docs/pipeline/3-composite.md), [merge](docs/pipeline/4-merge.md), [export](docs/pipeline/5-export.md).
+- [`CONTEXT.md`](CONTEXT.md): glossary (Event, Series, Cube, Baseline, Drop, Flood Extent…).
+- [`docs/detection-rules.md`](docs/detection-rules.md) and [`docs/adr/`](docs/adr/): why the rules and the multi-orbit design are what they are.
+
 ## Configuration
 
 `processing.memory_budget_mb` in the Event config (default `4096`) bounds the memory of every stage after download:

@@ -10,9 +10,13 @@ wheels/
 .venv
 
 # Pipeline outputs, regenerated on each run
-outputs/
+outputs/*
 
 CLAUDE.md
 CONTEXT.md
 
-.claude/
+.claude/*
+experiments/*
+docs/*
+scripts/flush_event.py
+experiments/extract_charente_buffer.py
