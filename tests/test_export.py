@@ -64,7 +64,7 @@ def test_manifest_dates_and_window_come_from_config_and_summary(config):
     assert (m["start"], m["end"]) == ("2026-02-01", "2026-03-01")
     assert m["compare"] == ["s1-before-composite", "s1-after-composite"]
     layers = {l["slug"]: l for l in m["layers"]}
-    assert list(layers) == ["flood-extent", "s1-before-composite", "s1-after-composite"]
+    assert list(layers) == ["flood-extent", "s1-before-composite", "s1-after-composite", "s1-before", "s1-after"]
     assert layers["s1-before-composite"]["acquired"] == "2026-01-30"
     assert layers["s1-after-composite"]["acquired"] == "2026-02-23"
 
@@ -81,6 +81,11 @@ def test_manifest_layer_roles_hints_and_attribution(config):
         assert layer["role"] == "imagery"
         assert "Copernicus" in layer["attribution"]
         assert layer["rgb"] == {"bands": [1, 2, 3], "ranges": [[-20.0, -3.0], [-26.0, -9.0], [2.0, 12.0]]}
+    for slug in ("s1-before", "s1-after"):
+        layer = layers[slug]
+        assert layer["role"] == "imagery" and layer["shown"] is False
+        assert "rgb" not in layer
+        assert layer["colormap"] == {"name": "greys_r", "range": [-20.0, -3.0]}
     assert "attribution" not in extent
 
 

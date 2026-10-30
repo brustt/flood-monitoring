@@ -103,6 +103,10 @@ def event_manifest(
             "rgb": {"bands": list(rgb["bands"]), "ranges": [list(x) for x in rgb["ranges"]]},
         }
 
+    def vv_imagery(slug: str, title: str, day: str) -> dict:
+        layer = {k: v for k, v in imagery(slug, title, day).items() if k != "rgb"}
+        return {**layer, "colormap": {"name": "greys_r", "range": list(r.vv)}}
+
     layers = [
         {
             "slug": "flood-extent",
@@ -121,6 +125,8 @@ def event_manifest(
         layers += [
             imagery("s1-before-composite", "Sentinel-1 before the flood", summary["before"]),
             imagery("s1-after-composite", "Sentinel-1 at the flood peak", summary["peak"]),
+            vv_imagery("s1-before", "Sentinel-1 VV before the flood", summary["before"]),
+            vv_imagery("s1-after", "Sentinel-1 VV at the flood peak", summary["peak"]),
         ]
     if "series" in summary:
         layers.append(orbit_map_layer(summary["series"], layers_dir))
