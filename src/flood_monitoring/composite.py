@@ -6,6 +6,7 @@ import json
 import logging
 
 import numpy as np
+import rasterio
 import xarray as xr
 
 from . import chunks, raster
@@ -58,10 +59,27 @@ def render_rgb(composite: np.ndarray, ranges: dict[str, tuple[float, float]]) ->
     return np.stack(channels, axis=-1).astype("uint8")
 
 
+def extract_vv(paths: EventPaths) -> None:
+    """Write the VV band (band 1) of each Composite as its own single-band file, unless it exists."""
+    for src, dst in ((paths.before_composite, paths.before_vv), (paths.after_composite, paths.after_vv)):
+        if dst.exists() or not src.exists():
+            continue
+        with rasterio.open(src) as ds:
+            profile = {**ds.profile, "count": 1}
+            with rasterio.open(raster.partial(dst), "w", **profile) as out:
+                out.scales, out.offsets = ds.scales[:1], ds.offsets[:1]
+                out.set_band_description(1, "VV dB")
+                for _, window in ds.block_windows(1):
+                    out.write(ds.read(1, window=window), 1, window=window)
+        raster.commit([dst])
+        print(f"VV: {dst}")
+
+
 def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
     targets = {"before": paths.before_composite, "after": paths.after_composite}
     if all(p.exists() for p in targets.values()) and not force:
         print(f"skip: {paths.processed} Composites exist")
+        extract_vv(paths)
         return
     for needed, stage in ((paths.summary, "flood-extent"), (paths.filtered_cube, "despeckle")):
         if not needed.exists():
@@ -70,7 +88,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
     if "peak" not in summary:
         raise FileNotFoundError(f"{paths.summary} has no Peak; run the flood-extent stage first")
 
-    raster.clear(list(targets.values()))  # both are the skip sentinel
+    raster.clear([*targets.values(), paths.before_vv, paths.after_vv])  # both are the skip sentinel
     chosen = {"before": summary["before"], "after": summary["peak"]}
     budget = config.processing.memory_budget_mb
     ds, plan = chunks.open_cube(paths.filtered_cube, budget, bytes_per_date=28, time_chunk=1)
@@ -97,5 +115,6 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
             )
         raster.write_partial(rasters)
     raster.commit(list(targets.values()))
+    extract_vv(paths)
     for name, day in chosen.items():
         print(f"{name} Composite ({day}): {targets[name]}")

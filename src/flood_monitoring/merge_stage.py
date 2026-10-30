@@ -22,7 +22,7 @@ from shapely.geometry import box, mapping
 from shapely.ops import transform as shapely_transform
 
 from . import aoi, chunks, raster
-from .composite import NODATA, SCALE, STORED_NODATA, decode, encode
+from .composite import NODATA, SCALE, STORED_NODATA, decode, encode, extract_vv
 from .config import EventConfig
 from .merge import ORBIT_MAP_NODATA, coverage, fill_composites, merge_flood_extent, rank_series, valid_composite
 from .paths import EventPaths
@@ -111,6 +111,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
         return
     if paths.orbit_map.exists() and paths.flood_extent.exists() and not force:
         print(f"skip: {paths.orbit_map} exists")
+        extract_vv(paths)
         return
 
     series = [paths.series_paths(o) for o in orbits]
@@ -124,7 +125,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
             raise FileNotFoundError(f"{p.summary} has no Peak; run the flood-extent stage first")
 
     layers = [paths.orbit_map, paths.flood_extent, paths.permanent_water, paths.before_composite, paths.after_composite]
-    raster.clear(layers, [paths.merge_work, paths.sieve_work])  # the skip sentinels first, then leftovers
+    raster.clear([*layers, paths.before_vv, paths.after_vv], [paths.merge_work, paths.sieve_work])  # the skip sentinels first, then leftovers
 
     polygon = config.aoi_polygon or box(*config.area_of_interest)
     crs = config.event_grid.crs
@@ -217,6 +218,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
     shutil.rmtree(paths.merge_work)
     shutil.rmtree(paths.sieve_work)
     raster.commit([paths.permanent_water, paths.before_composite, paths.after_composite])
+    extract_vv(paths)
     paths.aoi_polygon.write_text(
         json.dumps({"type": "Feature", "properties": {}, "geometry": mapping(polygon)}) + "\n"
     )

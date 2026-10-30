@@ -112,6 +112,16 @@ class EventPaths:
         return self.processed / "after-composite.tif"
 
     @property
+    def before_vv(self) -> Path:
+        """VV band of the Before Composite."""
+        return self.processed / "before-vv.tif"
+
+    @property
+    def after_vv(self) -> Path:
+        """VV band of the After Composite."""
+        return self.processed / "after-vv.tif"
+
+    @property
     def outputs(self) -> Path:
         """Final Layers, in the repo and git-ignored."""
         return self.repo_root / "outputs" / self.event

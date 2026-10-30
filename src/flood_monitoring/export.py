@@ -146,6 +146,8 @@ def run(
     if composites:
         sources["s1-before-composite"] = (paths.before_composite, "composite")
         sources["s1-after-composite"] = (paths.after_composite, "composite")
+        sources["s1-before"] = (paths.before_vv, "composite")
+        sources["s1-after"] = (paths.after_vv, "composite")
     else:
         logger.warning("no Composites for %s: publishing the Flood Extent without imagery Layers", config.event)
     for source, stage in sources.values():

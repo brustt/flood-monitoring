@@ -7,6 +7,7 @@ import rasterio
 from rasterio.transform import from_origin
 
 from flood_monitoring import export
+from flood_monitoring.composite import extract_vv
 from flood_monitoring.config import load_event_config
 from flood_monitoring.paths import EventPaths
 
@@ -43,6 +44,7 @@ def paths(tmp_path):
     write_raster(p.flood_extent, mask(), "uint8", None)
     write_raster(p.before_composite, composite(1), "int16", -32768)
     write_raster(p.after_composite, composite(2), "int16", -32768)
+    extract_vv(p)
     p.summary.write_text(json.dumps(SUMMARY))
     return p
 
@@ -169,3 +171,11 @@ def test_run_publishes_without_composites(config, paths, caplog):
     assert [layer["slug"] for layer in manifest["layers"]] == ["flood-extent"]
     assert "compare" not in manifest
     assert not (paths.outputs / "s1-before-composite.tif").exists()
+
+
+def test_run_exports_single_band_vv(config, paths):
+    write_project(paths)
+    export.run(config, paths)
+    for slug in ("s1-before", "s1-after"):
+        with rasterio.open(paths.outputs / f"{slug}.tif") as ds:
+            assert ds.count == 1 and ds.dtypes == ("int16",)
