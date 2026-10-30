@@ -47,7 +47,7 @@ gdal = { LDFLAGS = "-L/usr/local/lib -Wl,-rpath,/usr/local/lib" }
 [tool.uv.sources]
 eo-pipe = { path = "../eo-pipe", editable = true }
 eo-stac = { git = "https://github.com/brustt/eo-stac", branch = "main" }
-platform-publish = { git = "https://github.com/brustt/platform-publish", tag = "v0.1.0" }
+platform-publish = { git = "https://github.com/brustt/platform-publish", tag = "v0.2.1" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

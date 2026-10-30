@@ -681,7 +681,7 @@ dev = [
 [[package]]
 name = "eo-stac"
 version = "0.1.0"
-source = { git = "https://github.com/brustt/eo-stac?branch=main#e8bc12f97618d3eba6498a7308850b661d985fba" }
+source = { git = "https://github.com/brustt/eo-stac?branch=main#f3b1928b12042959f89e45c4f79bf56c04b4b9f5" }
 dependencies = [
     { name = "folium" },
     { name = "geopandas" },
@@ -772,7 +772,7 @@ requires-dist = [
     { name = "eo-pipe", editable = "../eo-pipe" },
     { name = "eo-stac", git = "https://github.com/brustt/eo-stac?branch=main" },
     { name = "geopandas" },
-    { name = "platform-publish", git = "https://github.com/brustt/platform-publish?tag=v0.1.0" },
+    { name = "platform-publish", git = "https://github.com/brustt/platform-publish?tag=v0.2.1" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "shapely" },
 ]
@@ -2062,12 +2062,13 @@ wheels = [
 
 [[package]]
 name = "platform-publish"
-version = "0.1.0"
-source = { git = "https://github.com/brustt/platform-publish?tag=v0.1.0#0cc5d1a2937a86b2c6ce078c9a4b2036cf8e742d" }
+version = "0.2.1"
+source = { git = "https://github.com/brustt/platform-publish?tag=v0.2.1#250ec694b74debc87b64249644b4c321612eb098" }
 dependencies = [
     { name = "boto3" },
     { name = "jsonschema" },
     { name = "numpy" },
+    { name = "pyarrow" },
     { name = "pyproj" },
     { name = "pyyaml" },
     { name = "rasterio" },
