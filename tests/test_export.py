@@ -80,12 +80,12 @@ def test_manifest_layer_roles_hints_and_attribution(config):
         layer = layers[slug]
         assert layer["role"] == "imagery"
         assert "Copernicus" in layer["attribution"]
-        assert layer["rgb"] == {"bands": [1, 2, 3], "ranges": [[-20.0, -3.0], [-26.0, -9.0], [2.0, 12.0]]}
+        assert layer["rgb"] == {"bands": [1, 2, 3], "ranges": [[-2000, -300], [-2600, -900], [200, 1200]]}
     for slug in ("s1-before", "s1-after"):
         layer = layers[slug]
         assert layer["role"] == "imagery" and layer["shown"] is False
         assert "rgb" not in layer
-        assert layer["colormap"] == {"name": "greys_r", "range": [-20.0, -3.0]}
+        assert layer["colormap"] == {"name": "greys_r", "range": [-2000, -300]}
     assert "attribution" not in extent
 
 

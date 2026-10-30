@@ -16,6 +16,7 @@ import yaml
 from platform_publish import validate
 
 from . import raster
+from .composite import SCALE
 from .config import EventConfig
 from .paths import EventPaths
 
@@ -88,7 +89,12 @@ def event_manifest(
     """
     layers_dir = layers_dir or f"../outputs/{config.event}"
     r = config.composite
-    rgb = {"bands": [1, 2, 3], "ranges": [list(r.vv), list(r.vh), list(r.vv_minus_vh)]}
+
+    def stored(db_range: tuple[float, float]) -> list[int]:
+        """The platform hands display ranges to the tile server as is: they are in stored units, not dB."""
+        return [round(v / SCALE) for v in db_range]
+
+    rgb = {"bands": [1, 2, 3], "ranges": [stored(r.vv), stored(r.vh), stored(r.vv_minus_vh)]}
 
     def imagery(slug: str, title: str, day: str) -> dict:
         return {
@@ -105,7 +111,7 @@ def event_manifest(
 
     def vv_imagery(slug: str, title: str, day: str) -> dict:
         layer = {k: v for k, v in imagery(slug, title, day).items() if k != "rgb"}
-        return {**layer, "colormap": {"name": "greys_r", "range": list(r.vv)}}
+        return {**layer, "colormap": {"name": "greys_r", "range": stored(r.vv)}}
 
     layers = [
         {
@@ -123,8 +129,8 @@ def event_manifest(
     ]
     if composites:
         layers += [
-            imagery("s1-before-composite", "Sentinel-1 before the flood", summary["before"]),
-            imagery("s1-after-composite", "Sentinel-1 at the flood peak", summary["peak"]),
+            imagery("s1-before-composite", "Sentinel-1 composite before the flood", summary["before"]),
+            imagery("s1-after-composite", "Sentinel-1 composite at the flood peak", summary["peak"]),
             vv_imagery("s1-before", "Sentinel-1 VV before the flood", summary["before"]),
             vv_imagery("s1-after", "Sentinel-1 VV at the flood peak", summary["peak"]),
         ]
