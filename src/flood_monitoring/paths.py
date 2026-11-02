@@ -50,6 +50,11 @@ class EventPaths:
         return self.interim / "cube.nc"
 
     @property
+    def window(self) -> Path:
+        """The Cube's window (``window``: chunks written, ``side``: chunk side in pixels), ``.npz``; only with a polygon."""
+        return self.interim / "window.npz"
+
+    @property
     def filtered_cube(self) -> Path:
         """The Cube after Lee then Quegan."""
         return self.interim / "filtered-cube.nc"

@@ -1,10 +1,13 @@
 import re
 import warnings
 
+import numpy as np
 import pytest
+import rasterio
 import rasterio.env
 from eo_pipe.io.memory import ChunkPlan
 from eo_pipe.pipeline import PipelineComposition
+from rasterio.transform import from_origin
 
 import reference_inputs as ri
 from flood_monitoring import chunks, composite, despeckle, event, flood_extent, merge_stage, stack
@@ -143,10 +146,14 @@ def test_stack_and_despeckle_pass_budget_to_eo_pipe(tmp_path, monkeypatch):
     config, paths = ri.single_series_config(tmp_path, budget_mb=777)
     subset = paths.raw / "sentinel-1-rtc" / "2026-01-01" / "item" / "item_vv_sub-abc.tif"
     subset.parent.mkdir(parents=True)
-    subset.touch()
+    with rasterio.open(
+        subset, "w", driver="GTiff", width=48, height=48, count=1, dtype="float32",
+        crs=ri.CRS, transform=from_origin(*ri.ORIGIN, ri.PIXEL, ri.PIXEL),
+    ) as dst:
+        dst.write(np.zeros((1, 48, 48), dtype="float32"))
     with pytest.raises(Stop):
         stack.run(config, paths)
-    paths.interim.mkdir(parents=True)
+    paths.interim.mkdir(parents=True, exist_ok=True)
     paths.cube.touch()
     with pytest.raises(Stop):
         despeckle.run(config, paths)
