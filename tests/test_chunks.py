@@ -176,3 +176,16 @@ def test_stages_plan_with_config_budget(tmp_path, monkeypatch, stage):
             if name == stage:
                 break
     assert budgets == [777]
+
+
+def test_despeckle_compresses_only_the_filtered_cube(tmp_path, monkeypatch):
+    steps = {}
+    monkeypatch.setattr(PipelineComposition, "add_step", lambda self, name, batch, **p: steps.setdefault(name, p) and self)
+    monkeypatch.setattr(PipelineComposition, "run", lambda self, *a, **k: (_ for _ in ()).throw(Stop))
+    config, paths = ri.single_series_config(tmp_path, budget_mb=777)
+    paths.interim.mkdir(parents=True)
+    paths.cube.touch()
+    with pytest.raises(Stop):
+        despeckle.run(config, paths)
+    assert steps["quegan_filter"]["compress"] is True
+    assert "compress" not in steps["lee_filter"]
