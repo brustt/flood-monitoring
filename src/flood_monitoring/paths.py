@@ -102,6 +102,11 @@ class EventPaths:
         return self.processed / "flood-extent.tif"
 
     @property
+    def water_footprint(self) -> Path:
+        """Water of any Post-event Acquisition, Permanent Water included."""
+        return self.processed / "water-footprint.tif"
+
+    @property
     def before_composite(self) -> Path:
         """Composite of the last Acquisition before the Event Start."""
         return self.processed / "before-composite.tif"

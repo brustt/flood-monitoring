@@ -198,6 +198,7 @@ def write_series(
     flooded = np.zeros((size, size), "uint8")
     flooded[r0:r1, c0:c1] = 1
     _write(paths.flood_extent, flooded, transform, None)
+    _write(paths.water_footprint, flooded, transform, None)
     permanent = np.zeros((size, size), "uint8")
     permanent[_i(0.85, size) : max(_i(0.875, size), _i(0.85, size) + 1)] = 1
     _write(paths.permanent_water, permanent, transform, None)

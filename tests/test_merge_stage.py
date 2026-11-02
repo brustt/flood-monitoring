@@ -57,6 +57,9 @@ def setup(tmp_path):
         flooded = np.zeros((SIZE, SIZE), "uint8")
         flooded[10:20, flooded_cols] = 1
         write(p.flood_extent, flooded, None)
+        footprint = flooded.copy()
+        footprint[35, :] = 1  # a river: Permanent Water, so in the footprint but not in the Flood Extent
+        write(p.water_footprint, footprint, None)
         write(p.permanent_water, np.zeros((SIZE, SIZE), "uint8"), None)
         write(p.before_composite, comp(before_value), STORED_NODATA)
         write(p.after_composite, comp(before_value - 1), STORED_NODATA)
@@ -85,7 +88,12 @@ def test_merge_writes_global_layers_orbit_map_and_summary(setup):
         extent = src.read(1)
         assert src.nodata == 255 and src.crs.to_string() == CRS
     assert extent[15, 5] == 1 and extent[15, 30] == 1  # flooded in either Series
-    assert extent[30, 5] == 0
+    assert extent[30, 5] == 0 and extent[36, 5] == 0
+    with rasterio.open(paths.water_footprint) as src:
+        footprint = src.read(1)
+        assert src.nodata == 255
+    assert footprint[15, 5] == 1 and footprint[15, 30] == 1 and footprint[36, 5] == 1
+    assert footprint[25, 5] == 0
 
     with rasterio.open(paths.orbit_map) as src:
         orbit_map = src.read(1)
@@ -180,7 +188,7 @@ def test_large_merge_is_chunk_independent(tmp_path, monkeypatch):
         config, paths = ri.two_series(tmp_path / str(side), size=1200, budget_mb=256)  # GDAL splits this warp
         merge_stage.run(config, paths)
         layers[side] = {}
-        for p in (paths.flood_extent, paths.permanent_water, paths.before_composite, paths.after_composite,
+        for p in (paths.flood_extent, paths.water_footprint, paths.permanent_water, paths.before_composite, paths.after_composite,
                   paths.orbit_map):
             with rasterio.open(p) as src:
                 layers[side][p.name] = src.read()

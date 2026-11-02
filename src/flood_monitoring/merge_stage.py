@@ -117,14 +117,14 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
     series = [paths.series_paths(o) for o in orbits]
     summaries = []
     for orbit, p in zip(orbits, series):
-        for needed in (p.summary, p.flood_extent, p.permanent_water, p.before_composite, p.after_composite):
+        for needed in (p.summary, p.flood_extent, p.water_footprint, p.permanent_water, p.before_composite, p.after_composite):
             if not needed.exists():
                 raise FileNotFoundError(f"{needed} is missing; run the stages of relative orbit {orbit} first")
         summaries.append(json.loads(p.summary.read_text()))
         if "peak" not in summaries[-1]:
             raise FileNotFoundError(f"{p.summary} has no Peak; run the flood-extent stage first")
 
-    layers = [paths.orbit_map, paths.flood_extent, paths.permanent_water, paths.before_composite, paths.after_composite]
+    layers = [paths.orbit_map, paths.flood_extent, paths.water_footprint, paths.permanent_water, paths.before_composite, paths.after_composite]
     raster.clear([*layers, paths.before_vv, paths.after_vv], [paths.merge_work, paths.sieve_work])  # the skip sentinels first, then leftovers
 
     polygon = config.aoi_polygon or box(*config.area_of_interest)
@@ -144,6 +144,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
             files = {}
             for name, src, resampling, nodata in (
                 ("flood-extent", p.flood_extent, Resampling.nearest, None),
+                ("water-footprint", p.water_footprint, Resampling.nearest, None),
                 ("permanent-water", p.permanent_water, Resampling.nearest, None),
                 ("before-composite", p.before_composite, Resampling.bilinear, STORED_NODATA),
                 ("after-composite", p.after_composite, Resampling.bilinear, STORED_NODATA),
@@ -155,10 +156,11 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
         opened = {
             name: [open_on_grid(f[name], grid, plan.side, mask=not name.endswith("composite"))
                    for f in warped]
-            for name in ("flood-extent", "permanent-water", "before-composite", "after-composite")
+            for name in ("flood-extent", "water-footprint", "permanent-water", "before-composite", "after-composite")
         }
         try:
             extents, permanents = opened["flood-extent"], opened["permanent-water"]
+            footprints_water = opened["water-footprint"]
             # A Composite pixel missing in any band is nodata in all.
             befores, afters = (
                 [c.where(valid_composite(c), NODATA) for c in opened[name]]
@@ -182,6 +184,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
             opened["sieved"] = [sieved_extent]
             extent = sieved_extent & inside
             permanent = merge_flood_extent(permanents, inside)
+            water_footprint = merge_flood_extent(footprints_water, inside)
             before, orbit_map = fill_composites(befores, order, inside)
             after, same_map = fill_composites(afters, order, inside)
 
@@ -196,6 +199,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
             # the priority fill, the opened Series rasters) for the whole grid. The warped inputs are local files.
             for data, path, dtype, nodata in (
                 (nodata_outside(extent), paths.flood_extent, "uint8", FLOOD_EXTENT_NODATA),
+                (nodata_outside(water_footprint), paths.water_footprint, "uint8", FLOOD_EXTENT_NODATA),
                 (nodata_outside(permanent), paths.permanent_water, "uint8", FLOOD_EXTENT_NODATA),
                 (encode(before), paths.before_composite, "int16", STORED_NODATA),
                 (encode(after), paths.after_composite, "int16", STORED_NODATA),
@@ -217,7 +221,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
 
     shutil.rmtree(paths.merge_work)
     shutil.rmtree(paths.sieve_work)
-    raster.commit([paths.permanent_water, paths.before_composite, paths.after_composite])
+    raster.commit([paths.water_footprint, paths.permanent_water, paths.before_composite, paths.after_composite])
     extract_vv(paths)
     paths.aoi_polygon.write_text(
         json.dumps({"type": "Feature", "properties": {}, "geometry": mapping(polygon)}) + "\n"

@@ -173,3 +173,12 @@ def test_flood_extent_flooded_areas_and_peak():
     areas = d.flooded_areas(masks, perm).values.tolist()
     assert areas == [1, 3, 2]
     assert d.peak(areas) == 1
+
+
+def test_water_footprint_is_union_of_water_masks_and_keeps_permanent_water():
+    masks = np.zeros((2, 1, 5), dtype=bool)
+    masks[0, 0, :2] = True  # includes pixel 0, which is Permanent Water
+    masks[1, 0, 1:4] = True
+    masks = xr.DataArray(masks, dims=("time", "y", "x"))
+    footprint = d.water_footprint(masks)
+    assert footprint.dtype == bool and footprint.values[0].tolist() == [True, True, True, True, False]

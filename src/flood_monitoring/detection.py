@@ -131,6 +131,11 @@ def flood_extent(water_masks: xr.DataArray, permanent: xr.DataArray) -> xr.DataA
     return water_masks.any("time") & ~permanent
 
 
+def water_footprint(water_masks: xr.DataArray) -> xr.DataArray:
+    """Union of the post-event Water Masks, Permanent Water included."""
+    return water_masks.any("time")
+
+
 def flooded_areas(water_masks: xr.DataArray, permanent: xr.DataArray) -> xr.DataArray:
     """Water pixels outside Permanent Water, per step."""
     return (water_masks & ~permanent).sum(("y", "x"))

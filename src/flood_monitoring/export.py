@@ -20,7 +20,7 @@ from .composite import SCALE
 from .config import EventConfig
 from .paths import EventPaths
 
-FLOOD_EXTENT_NODATA = 255
+WATER_FOOTPRINT_NODATA = 255
 FLOOD_COLOR = "#1f78b4"
 ORBIT_COLORS = ("#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#a65628")
 logger = logging.getLogger(__name__)
@@ -115,15 +115,15 @@ def event_manifest(
 
     layers = [
         {
-            "slug": "flood-extent",
-            "file": f"{layers_dir}/flood-extent.tif",
+            "slug": "water-footprint",
+            "file": f"{layers_dir}/water-footprint.tif",
             "role": "result",
             "kind": "raster",
-            "title": "Flood extent",
+            "title": "Water footprint",
             "shown": True,
             "categories": [
-                {"value": 0, "color": "#000000", "label": "No flood", "transparent": True},
-                {"value": 1, "color": FLOOD_COLOR, "label": "Flooded"},
+                {"value": 0, "color": "#000000", "label": "No water", "transparent": True},
+                {"value": 1, "color": FLOOD_COLOR, "label": "Water"},
             ],
         },
     ]
@@ -152,7 +152,7 @@ def run(
 ) -> None:
     """Always rewrites the outputs: they are small and must match the processed rasters."""
     executed_at = executed_at or datetime.now()
-    sources = {"flood-extent": (paths.flood_extent, "flood-extent")}
+    sources = {"water-footprint": (paths.water_footprint, "flood-extent")}
     # A VV-only Series has no Composites: publish without them. Only one of the two is a broken run.
     composites = paths.before_composite.exists() or paths.after_composite.exists()
     if composites:
@@ -161,7 +161,7 @@ def run(
         sources["s1-before"] = (paths.before_vv, "composite")
         sources["s1-after"] = (paths.after_vv, "composite")
     else:
-        logger.warning("no Composites for %s: publishing the Flood Extent without imagery Layers", config.event)
+        logger.warning("no Composites for %s: publishing the Water Footprint without imagery Layers", config.event)
     for source, stage in sources.values():
         if not source.exists():
             raise FileNotFoundError(f"{source} is missing; run the {stage} stage first")
@@ -184,8 +184,8 @@ def run(
         target = paths.outputs / f"{slug}.tif"
         if slug == "orbit-map":
             write_cog(source, target, categorical=True)
-        elif slug == "flood-extent":
-            write_cog(source, target, categorical=True, nodata=FLOOD_EXTENT_NODATA)
+        elif slug == "water-footprint":
+            write_cog(source, target, categorical=True, nodata=WATER_FOOTPRINT_NODATA)
         else:
             write_cog(source, target, categorical=False)
         print(f"{slug}: {target} ({target.stat().st_size / 1e6:.2f} MB)")
