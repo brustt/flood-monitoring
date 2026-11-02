@@ -3,7 +3,7 @@ event: charente-2026-02
 
 # Polygon file, relative to the repo root: the Charente buffered by 200 m within 200 km of Saintes
 # (experiments/extract_charente_buffer.py).
-area_of_interest: ../data/flood-monitoring/external/charente_buffer2000_simplified.gpkg
+area_of_interest: /home/brustt/Documents/Projects/data/flood-monitoring/external/charente_buffer6000_simplified.gpkg
 
 # Calendar period of the flood shown on the Platform. Set by hand; it is not
 # the Event Start, which the pipeline detects from the Series.
