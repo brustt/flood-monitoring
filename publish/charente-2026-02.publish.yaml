@@ -26,8 +26,8 @@ layers:
   kind: raster
   title: Sentinel-1 composite before the flood
   shown: false
-  acquired: '2026-02-11'
-  attribution: Contains modified Copernicus Sentinel data 2026
+  acquired: '2025-12-31'
+  attribution: Contains modified Copernicus Sentinel data 2025
   rgb:
     bands:
     - 1
@@ -46,7 +46,7 @@ layers:
   kind: raster
   title: Sentinel-1 composite at the flood peak
   shown: false
-  acquired: '2026-02-17'
+  acquired: '2026-02-23'
   attribution: Contains modified Copernicus Sentinel data 2026
   rgb:
     bands:
@@ -66,8 +66,8 @@ layers:
   kind: raster
   title: Sentinel-1 VV before the flood
   shown: false
-  acquired: '2026-02-11'
-  attribution: Contains modified Copernicus Sentinel data 2026
+  acquired: '2025-12-31'
+  attribution: Contains modified Copernicus Sentinel data 2025
   colormap:
     name: greys_r
     range:
@@ -79,7 +79,7 @@ layers:
   kind: raster
   title: Sentinel-1 VV at the flood peak
   shown: false
-  acquired: '2026-02-17'
+  acquired: '2026-02-23'
   attribution: Contains modified Copernicus Sentinel data 2026
   colormap:
     name: greys_r
