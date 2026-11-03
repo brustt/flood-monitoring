@@ -13,7 +13,7 @@ window:
 
 series:
   collection: sentinel-1-rtc
-  start: 2025-01-01
+  start: 2026-01-01
   end: 2026-03-01
   orbit_state: descending
   instrument_mode: IW
