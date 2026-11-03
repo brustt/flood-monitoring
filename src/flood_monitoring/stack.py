@@ -78,7 +78,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
         PipelineComposition(workspace=work)
         .add_step(
             "stack_tiles", MergeBatch(), group=config.event, union=True, time_bin="day",
-            memory_budget_mb=config.processing.memory_budget_mb, **window_params,
+            memory_budget_mb=config.processing.memory_budget_mb, compress=True, **window_params,
         )
         .run(inputs, save_intermediate=True)
     )

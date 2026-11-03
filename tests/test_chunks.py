@@ -160,6 +160,7 @@ def test_stack_and_despeckle_pass_budget_to_eo_pipe(tmp_path, monkeypatch):
     assert {name: p["memory_budget_mb"] for name, p in steps.items()} == {
         "stack_tiles": 777, "lee_filter": 777, "quegan_filter": 777,
     }
+    assert all(p["compress"] is True for p in steps.values())
 
 
 @pytest.mark.parametrize("stage", ["event", "flood-extent", "composite", "merge"])

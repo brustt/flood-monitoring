@@ -28,9 +28,13 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
     ctx = (
         PipelineComposition(workspace=work)
         .add_step(
-            "lee_filter", ParallelBatch(), window_size=settings.lee_window, enl=settings.enl, memory_budget_mb=budget
+            "lee_filter", ParallelBatch(), window_size=settings.lee_window, enl=settings.enl, memory_budget_mb=budget,
+            compress=True,
         )
-        .add_step("quegan_filter", ParallelBatch(), window_size=settings.quegan_window, memory_budget_mb=budget)
+        .add_step(
+            "quegan_filter", ParallelBatch(), window_size=settings.quegan_window, memory_budget_mb=budget,
+            compress=True,
+        )
         .run([paths.cube], save_intermediate=True)
     )
     shutil.move(ctx.inputs[0], paths.filtered_cube)
