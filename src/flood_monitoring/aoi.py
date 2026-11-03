@@ -20,6 +20,23 @@ def aoi_mask(polygon: BaseGeometry, crs, transform: Affine, shape_yx: tuple[int,
     )
 
 
+def chunk_window(polygon: BaseGeometry, crs, transform: Affine, shape_yx: tuple[int, int], side: int) -> np.ndarray:
+    """Boolean (rows, columns) grid of the *side* x *side* chunks of the grid that touch *polygon* (EPSG:4326).
+
+    The test is done in the grid's CRS, with a margin of one pixel.
+    """
+    project = Transformer.from_crs(4326, crs, always_xy=True).transform
+    projected = shapely_transform(project, polygon).buffer(abs(transform.a))
+    mask = rasterio.features.geometry_mask(
+        [projected], out_shape=shape_yx, transform=transform, invert=True, all_touched=True
+    )
+    height, width = shape_yx
+    rows, cols = -(-height // side), -(-width // side)
+    padded = np.zeros((rows * side, cols * side), dtype=bool)
+    padded[:height, :width] = mask
+    return padded.reshape(rows, side, cols, side).any(axis=(1, 3))
+
+
 def written_transform(da: xr.DataArray) -> Affine:
     """The transform written on *da* with ``rio.write_transform`` if any, else derived from its coords.
 

@@ -45,8 +45,8 @@ gdal = ["setuptools", "numpy"]
 gdal = { LDFLAGS = "-L/usr/local/lib -Wl,-rpath,/usr/local/lib" }
 
 [tool.uv.sources]
-eo-pipe = { path = "../eo-pipe", editable = true }
-eo-stac = { git = "https://github.com/brustt/eo-stac", branch = "main" }
+eo-pipe = { path = "/home/brustt/Documents/Projects/eo-pipe/.claude/worktrees/stack-tiles-window", editable = true }
+eo-stac = { path = "/home/brustt/Documents/Projects/eo-stac/.claude/worktrees/issue-1", editable = true }
 platform-publish = { git = "https://github.com/brustt/platform-publish", tag = "v0.2.1" }
 
 [tool.pytest.ini_options]
