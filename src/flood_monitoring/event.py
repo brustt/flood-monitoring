@@ -31,8 +31,13 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
         db = to_db_lazy(georeferenced(ds, "VV"), ds.attrs.get("nodata"))
         # the share is of the polygon's pixels, not the bounding box's
         inside = aoi.mask_like(config.aoi_polygon, db) if config.aoi_polygon is not None else None
+        window = None
+        if inside is not None and paths.window.exists():
+            # chunks outside the stack stage's window hold no pixel of the polygon: skip them
+            with np.load(paths.window) as saved:
+                window = saved["window"], int(saved["side"])
         try:
-            k, shares = event_start(db, rules.min_baseline, rules.drop_db, rules.event_share, inside)
+            k, shares = event_start(db, rules.min_baseline, rules.drop_db, rules.event_share, inside, window=window)
         except ValueError as exc:
             orbit = f"relative orbit {paths.orbit}: " if paths.orbit is not None else ""
             raise ValueError(f"{orbit}{exc}") from exc

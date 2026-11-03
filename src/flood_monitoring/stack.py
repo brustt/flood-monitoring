@@ -46,7 +46,10 @@ def _window_params(config: EventConfig, paths: EventPaths, inputs: list[Path]) -
     crs, transform, shape, itemsize = _union_grid(inputs)
     dates = len({p.parent.parent.name for p in inputs})
     side = chunks.plan(config.processing.memory_budget_mb, len(config.series.assets) * dates * itemsize, *shape).side
-    window = aoi.chunk_window(config.aoi_polygon, crs, transform, shape, side)
+    # the margin covers the halo of the speckle filters (Lee then Quegan), so no filtered pixel of the polygon reads a skipped chunk
+    settings = config.despeckle
+    margin = max(1, settings.lee_window // 2 + settings.quegan_window // 2)
+    window = aoi.chunk_window(config.aoi_polygon, crs, transform, shape, side, margin)
     paths.interim.mkdir(parents=True, exist_ok=True)
     np.savez(paths.window, window=window, side=side)
     print(f"window: {window.sum()}/{window.size} chunks of {side} px touch the polygon ({window.mean():.1%})")

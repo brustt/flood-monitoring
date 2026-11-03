@@ -70,3 +70,23 @@ def test_chunk_window_pads_a_grid_that_is_not_a_multiple_of_the_chunk_side():
     everything = lonlat((499000, 5001000), (501000, 5001000), (501000, 4999000), (499000, 4999000))
     assert chunk_window(everything, CRS, TRANSFORM, (SIZE, SIZE), 7).shape == (5, 5)
     assert chunk_window(everything, CRS, TRANSFORM, (SIZE, SIZE), 7).all()
+
+
+def test_chunk_window_margin_is_given_in_pixels():
+    from flood_monitoring.aoi import chunk_window
+
+    # the polygon ends at x=500094 in chunk (0, 0); chunk (0, 2) starts at x=500200, 106 m = 10.6 px away
+    poly = lonlat((500010, 4999990), (500094, 4999990), (500094, 4999960), (500010, 4999960))
+    assert chunk_window(poly, CRS, TRANSFORM, (SIZE, SIZE), 10, margin_px=1)[0].tolist() == [True, True, False]
+    assert chunk_window(poly, CRS, TRANSFORM, (SIZE, SIZE), 10, margin_px=11)[0].tolist() == [True, True, True]
+
+
+def test_block_in_window_tests_a_block_against_the_stored_window_grid():
+    from flood_monitoring.aoi import block_in_window
+
+    window = np.array([[True, False], [False, False]])
+    assert block_in_window(window, 10, (0, 10), (0, 10))
+    assert not block_in_window(window, 10, (10, 20), (10, 20))
+    # a block of another chunk side is in if any window chunk it overlaps is
+    assert block_in_window(window, 10, (5, 15), (8, 12))
+    assert not block_in_window(window, 10, (12, 20), (12, 20))
