@@ -36,6 +36,10 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
             # chunks outside the stack stage's window hold no pixel of the polygon: skip them
             with np.load(paths.window) as saved:
                 window = saved["window"], int(saved["side"])
+            rows, cols = (-(-n // window[1]) for n in db.shape[-2:])
+            if window[0].shape != (rows, cols):
+                print(f"ignore {paths.window}: its grid {window[0].shape} does not match the Cube's {(rows, cols)}")
+                window = None
         try:
             k, shares = event_start(db, rules.min_baseline, rules.drop_db, rules.event_share, inside, window=window)
         except ValueError as exc:

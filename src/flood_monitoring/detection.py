@@ -89,7 +89,7 @@ def series_drop_counts(
     parts = [
         delayed(drop_counts)(blocks[0, i, j], candidates, min_baseline, drop_db, None if masks is None else masks[i, j])
         for i, j in np.ndindex(blocks.shape[1:])
-        if window is None or block_in_window(*window[:1], window[1], rows[i : i + 2], cols[j : j + 2])
+        if window is None or block_in_window(window[0], window[1], rows[i : i + 2], cols[j : j + 2])
     ]
     return delayed(sum)(parts or [np.zeros((len(candidates), 2), dtype="int64")])
 

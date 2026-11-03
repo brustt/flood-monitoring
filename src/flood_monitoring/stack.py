@@ -51,6 +51,7 @@ def _window_params(config: EventConfig, paths: EventPaths, inputs: list[Path]) -
     margin = max(1, settings.lee_window // 2 + settings.quegan_window // 2)
     window = aoi.chunk_window(config.aoi_polygon, crs, transform, shape, side, margin)
     paths.interim.mkdir(parents=True, exist_ok=True)
+    paths.window.unlink(missing_ok=True)
     np.savez(paths.window, window=window, side=side)
     print(f"window: {window.sum()}/{window.size} chunks of {side} px touch the polygon ({window.mean():.1%})")
     return {"chunk_side": side, "window": window}
