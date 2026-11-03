@@ -13,8 +13,8 @@ window:
 
 series:
   collection: sentinel-1-rtc
-  start: 2025-09-01
-  end: 2026-03-30
+  start: 2025-01-01
+  end: 2026-03-01
   orbit_state: descending
   instrument_mode: IW
   # One Series per orbit (docs/adr/0001). Descending orbits 8, 81, 110 cover 100% of the AOI

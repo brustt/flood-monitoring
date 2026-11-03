@@ -10,7 +10,7 @@ from shapely.geometry import mapping, shape
 
 STAC_SEARCH = "https://planetarycomputer.microsoft.com/api/stac/v1/search"
 AOI = Path("~/Documents/Projects/data/flood-monitoring/external/hydro_major_buffer5000_simplified.gpkg").expanduser()
-PERIOD = "2025-09-01T00:00:00Z/2026-03-30T23:59:59Z"
+PERIOD = "2025-01-01T00:00:00Z/2026-03-01T23:59:59Z"
 METRIC_CRS = "EPSG:2154"
 
 

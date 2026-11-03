@@ -20,7 +20,28 @@ Built by `experiments/build_hydro_aoi.py`, orbits found by `experiments/s1_orbit
 Cumulative descending coverage: 8 alone 80.6%, 8 + 81 94.3%, 8 + 81 + 110 100%. Descending is enough, as in the
 existing Events. Each orbit is acquired every 6 days; a few dates are missing for 110 and 154 (see the script output for the lists).
 
-## Feasibility
+## Feasibility, Series 2025-01-01 to 2026-03-01
+
+Orbit 8: 60 dates, 275 slices, grid 2.1 Gpx. Orbit 81: 62 dates, 275 slices, 1.35 Gpx. Orbit 110: 58 dates,
+139 slices, 1.0 Gpx. Baselines measured on `charente-2026-02` (35 dates, 108 Mpx): raw Subsets and the Cube are
+float32, uncompressed; Cube and Filtered Cube = 8 B x px x dates (31 GB measured).
+
+| | Raw (vv+vh) | Cube | Filtered Cube |
+|---|---|---|---|
+| orbit 8 | 690 GB | 1,020 GB | 1,020 GB |
+| orbit 81 | 470 GB | 670 GB | 670 GB |
+| orbit 110 | 300 GB | 470 GB | 470 GB |
+| total | 1.46 TB | 2.16 TB | 2.16 TB |
+
+- Disk peak: about 5.8 TB (raw + Cube + Filtered Cube, the pipeline deletes none of them), plus about 1 TB of stage work
+  folder for orbit 8 while it is built. Processed results: about 150-200 GB (scaled from 3.5 GB for Charente).
+  The data disk has 288 GB free. With #33 (compressed Cubes) the Cube side shrinks, the raw side does not.
+- RAM: bounded by `memory_budget_mb`, not by the data. Fixed part: 2 GDAL caches (2 GB at 16384) + the AOI mask of
+  one Series (1 B/px, 2.0 GB for orbit 8) = about 4 GB; the rest goes to chunks, so a budget of 12-16 GB works and
+  smaller chunks only cost time. The machine has 30 GB.
+- Download: about 690 slices x 2 assets, 1.46 TB over the network.
+
+## Feasibility, first estimate (Series 2025-09-01 to 2026-03-30)
 
 - Slices to download: about 400 (8: ~154, 81: ~158, 110: ~85), x2 assets (vv, vh), about 800 files. Without #32 every
   Series is stacked over the whole bbox, not only the chunks touching the polygon.
