@@ -184,7 +184,7 @@ def test_a_stage_that_produced_nothing_keeps_its_input(paths, config):
 
 def test_stages_up_to_despeckle_are_skipped_when_a_later_requested_stage_is_done(paths, config):
     paths.ensure()
-    paths.before_composite.touch()
+    paths.after_composite.touch()
     calls = []
     cli.run_stages(config, paths, PER_SERIES, stages=recording_stages(calls))
     assert [c[0] for c in calls] == ["event", "flood-extent", "composite"]
@@ -192,7 +192,7 @@ def test_stages_up_to_despeckle_are_skipped_when_a_later_requested_stage_is_done
 
 def test_force_does_not_skip_superseded_stages(paths, config):
     paths.ensure()
-    paths.before_composite.touch()
+    paths.after_composite.touch()
     calls = []
     cli.run_stages(config, paths, PER_SERIES, force=True, stages=recording_stages(calls))
     assert [c[0] for c in calls] == PER_SERIES
@@ -200,7 +200,7 @@ def test_force_does_not_skip_superseded_stages(paths, config):
 
 def test_a_single_requested_stage_is_never_skipped(paths, config):
     paths.ensure()
-    paths.before_composite.touch()
+    paths.after_composite.touch()
     calls = []
     cli.run_stages(config, paths, ["despeckle"], stages=recording_stages(calls))
     assert [c[0] for c in calls] == ["despeckle"]

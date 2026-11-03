@@ -73,6 +73,11 @@ Against the earlier float32 run of the same Event (which covered the whole bbox,
   149,208 differ. These are pixels within the rounding (0.005 dB) of the -15 dB threshold, and the sieve moves a few more.
 - Outside the polygon the new run has no Flood Extent: the stages never read the chunks that were not stored.
 
+The Cube stores the polygon's chunks plus the speckle filters' halo (346 chunks of 256 px); the Filtered Cube stores
+only the chunks that touch the polygon (1083 chunks of 64 px), so the two counts differ. The float32 baseline sizes are
+not like for like: it was uncompressed and unwindowed, the Cube figure is an estimate, and only one orbit was run, so the
+peak disk of a 3-orbit run is not measured.
+
 The float32 stack of the orbit being stacked is still on disk next to the Cube until the Cube is written; for orbit 8 of
 `aquitaine_charente_2026-02` that is the peak (about the compressed float32 stack, 1.2-1.5x smaller than 1 TB, plus raw).
 Writing the dB conversion inside eo-pipe's `stack_tiles` would remove it.

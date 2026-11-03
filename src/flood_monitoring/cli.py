@@ -43,7 +43,7 @@ INTERMEDIATES = {
 DONE = {
     "stack": lambda p: p.cube,
     "despeckle": lambda p: p.filtered_cube,
-    "composite": lambda p: p.before_composite,
+    "composite": lambda p: p.after_composite,  # committed last
 }
 
 
