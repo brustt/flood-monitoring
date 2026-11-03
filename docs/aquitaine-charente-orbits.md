@@ -50,6 +50,33 @@ float32, uncompressed; Cube and Filtered Cube = 8 B x px x dates (31 GB measured
 - Uncompressed Cube: about 35 dates x 2 assets x 4 B x 2.2 Gpx = 600 GB per Series, 1.8 TB for three. This needs #33
   (compressed Cube) and #32 before a full run is realistic.
 
+## int16 Cube and Filtered Cube, measured on `charente-2026-02` (#39)
+
+One orbit, 35 dates, grid 15020 x 7207 px (108 Mpx), polygon of 13.3 Mpx, 4096 MB budget, stages run one after the other
+from a copy of `raw/` (hard links), default settings (intermediates deleted).
+
+| | float32, before | int16 dB, now |
+|---|---|---|
+| Filtered Cube | 30 GB (every chunk, uncompressed) | 1.32 GB (1083 of 6726 chunks of 64 px) |
+| Cube | 30 GB (estimated, same as above) | 1.93 GB (346 of 1711 chunks of 256 px, 20.2%) |
+| Peak disk of the run | about 94 GB (raw 34 + Cube 30 + Filtered Cube 30) | 41.7 GB, reached while stacking (raw 34 + float32 stack + Cube) |
+| Disk after the run | 94 GB + 3.5 GB results | 3.5 GB results only |
+
+Stage time and peak RSS: stack 201 s / 1.5 GB, despeckle 639 s / 2.8 GB, event 50 s / 0.7 GB, flood-extent 107 s / 1.9 GB,
+composite 85 s / 6.1 GB.
+
+Against the earlier float32 run of the same Event (which covered the whole bbox, so compared inside the polygon):
+
+- Event Start 2026-01-06, Before 2025-12-31 and Peak 2026-02-23 are identical.
+- Composites: same valid pixels, at most 1 stored unit (0.01 dB) apart.
+- Flood Extent is not identical: 789,863 pixels against 791,460 (-0.2%), 1,919 pixels differ (0.24%). Permanent Water: 164 of
+  149,208 differ. These are pixels within the rounding (0.005 dB) of the -15 dB threshold, and the sieve moves a few more.
+- Outside the polygon the new run has no Flood Extent: the stages never read the chunks that were not stored.
+
+The float32 stack of the orbit being stacked is still on disk next to the Cube until the Cube is written; for orbit 8 of
+`aquitaine_charente_2026-02` that is the peak (about the compressed float32 stack, 1.2-1.5x smaller than 1 TB, plus raw).
+Writing the dB conversion inside eo-pipe's `stack_tiles` would remove it.
+
 ## Pipeline gaps for multi-orbit Events
 
 Per-orbit loop in the CLI, merge stage, Orbit Map and Event summary already exist, and the config accepts

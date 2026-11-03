@@ -10,7 +10,7 @@ from eo_pipe.pipeline import PipelineComposition
 from rasterio.transform import from_origin
 
 import reference_inputs as ri
-from flood_monitoring import chunks, composite, despeckle, event, flood_extent, merge_stage, stack
+from flood_monitoring import chunks, composite, event, flood_extent, merge_stage, stack
 
 
 def cube(tmp_path, size=48, dates=12, chunk=16):
@@ -131,7 +131,7 @@ class Stop(Exception):
     pass
 
 
-def test_stack_and_despeckle_pass_budget_to_eo_pipe(tmp_path, monkeypatch):
+def test_stack_passes_budget_to_eo_pipe(tmp_path, monkeypatch):
     steps = {}
 
     def add_step(self, name, batch, **params):
@@ -153,14 +153,8 @@ def test_stack_and_despeckle_pass_budget_to_eo_pipe(tmp_path, monkeypatch):
         dst.write(np.zeros((1, 48, 48), dtype="float32"))
     with pytest.raises(Stop):
         stack.run(config, paths)
-    paths.interim.mkdir(parents=True, exist_ok=True)
-    paths.cube.touch()
-    with pytest.raises(Stop):
-        despeckle.run(config, paths)
-    assert {name: p["memory_budget_mb"] for name, p in steps.items()} == {
-        "stack_tiles": 777, "lee_filter": 777, "quegan_filter": 777,
-    }
-    assert all(p["compress"] is True for p in steps.values())
+    assert {name: p["memory_budget_mb"] for name, p in steps.items()} == {"stack_tiles": 777}
+    assert steps["stack_tiles"]["compress"] is True
 
 
 @pytest.mark.parametrize("stage", ["event", "flood-extent", "composite", "merge"])

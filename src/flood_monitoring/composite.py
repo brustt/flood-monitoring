@@ -12,7 +12,6 @@ import xarray as xr
 from . import chunks, raster
 from .config import EventConfig
 from .cube import georeferenced
-from .detection import to_db_lazy
 from .event import acquisition_dates
 from .paths import EventPaths
 
@@ -24,13 +23,12 @@ SCALE = 0.01  # dB per stored unit: files hold round(dB / SCALE)
 BANDS = ("vv", "vh", "vv_minus_vh")
 
 
-def composite_bands(vv: xr.DataArray, vh: xr.DataArray, nodata: float | None = None) -> xr.DataArray:
+def composite_bands(vv_db: xr.DataArray, vh_db: xr.DataArray) -> xr.DataArray:
     """Composite of one Acquisition: (band, y, x) float32 of VV dB, VH dB and VV minus VH dB.
 
-    *vv* and *vh* are (y, x) linear power. A pixel invalid in either polarization is :data:`NODATA`
-    in all three bands. Lazy on dask input.
+    *vv_db* and *vh_db* are (y, x) dB, NaN where invalid. A pixel invalid in either polarization is
+    :data:`NODATA` in all three bands. Lazy on dask input.
     """
-    vv_db, vh_db = to_db_lazy(vv, nodata), to_db_lazy(vh, nodata)
     out = xr.concat([vv_db, vh_db, vv_db - vh_db], dim="band").assign_coords(band=list(BANDS))
     return out.where(np.isfinite(out).all("band"), NODATA).astype("float32")
 
@@ -101,12 +99,11 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
             )
             return
         dates = acquisition_dates(ds["time"].values)
-        nodata = ds.attrs.get("nodata")
         vv, vh = georeferenced(ds, "VV"), georeferenced(ds, "VH")
         rasters = []
         for name, day in chosen.items():
             i = dates.index(day)
-            comp = composite_bands(vv.isel(time=i, drop=True), vh.isel(time=i, drop=True), nodata)
+            comp = composite_bands(vv.isel(time=i, drop=True), vh.isel(time=i, drop=True))
             rasters.append(
                 raster.Raster(
                     encode(comp), targets[name], "int16", vv.rio.crs, STORED_NODATA, "VV dB, VH dB, VV minus VH dB",

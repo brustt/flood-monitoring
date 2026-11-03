@@ -12,7 +12,7 @@ from flood_monitoring.paths import EventPaths
 
 SIZE = 40
 DATES = pd.date_range("2026-01-01", periods=6, freq="6D")  # Event Start is the 4th
-WATER, LAND = 0.01, 0.1  # linear power: -20 dB, -10 dB
+WATER, LAND = -20.0, -10.0  # dB
 PIXEL_KM2 = 10 * 10 / 1e6
 
 

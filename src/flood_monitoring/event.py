@@ -7,7 +7,7 @@ import numpy as np
 from . import aoi, chunks, raster
 from .config import EventConfig
 from .cube import georeferenced
-from .detection import event_start, to_db_lazy
+from .detection import event_start
 from .paths import EventPaths
 
 
@@ -28,7 +28,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
     ds, plan = chunks.open_cube(paths.filtered_cube, budget, bytes_per_date=40)
     with ds, chunks.scheduler(plan.workers, budget):
         dates = acquisition_dates(ds["time"].values)
-        db = to_db_lazy(georeferenced(ds, "VV"), ds.attrs.get("nodata"))
+        db = georeferenced(ds, "VV")
         # the share is of the polygon's pixels, not the bounding box's
         inside = aoi.mask_like(config.aoi_polygon, db) if config.aoi_polygon is not None else None
         window = None

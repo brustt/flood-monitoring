@@ -11,7 +11,7 @@ import xarray as xr
 from . import chunks, raster
 from .config import Detection, EventConfig
 from .cube import georeferenced
-from .detection import flood_extent, flooded_areas, peak, permanent_water, to_db_lazy, water, water_footprint
+from .detection import flood_extent, flooded_areas, peak, permanent_water, water, water_footprint
 from .event import acquisition_dates
 from .paths import EventPaths
 
@@ -68,7 +68,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
         post_dates = dates[start:]
         vv = georeferenced(ds, "VV")
         crs = vv.rio.crs
-        wet = water(to_db_lazy(vv, ds.attrs.get("nodata")), rules.water_db)
+        wet = water(vv, rules.water_db)
         template = wet.isel(time=0, drop=True)
 
         # Raw masks: Permanent Water first (water in most pre-event dates, thresholded before sieve),

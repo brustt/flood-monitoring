@@ -57,11 +57,11 @@ def child(stage: str, root: Path, budget: float, kind: str) -> None:
             import xarray as xr
 
             with xr.open_dataset(paths.filtered_cube) as ds:
-                check_cube(ds, nodata=ds.attrs.get("nodata"))
+                check_cube(ds, nodata=None)
         else:
             ds, plan = chunks.open_cube(paths.filtered_cube, budget, bytes_per_date=10)
             with ds, chunks.scheduler(plan.workers, budget):
-                check_cube(ds, nodata=ds.attrs.get("nodata"))
+                check_cube(ds, nodata=None)
     else:
         module = {"event": event, "flood-extent": flood_extent, "composite": composite, "merge": merge_stage}[stage]
         module.run(config, paths, force=True)

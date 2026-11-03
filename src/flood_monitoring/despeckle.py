@@ -2,15 +2,37 @@
 
 from __future__ import annotations
 
-import shutil
-
+import numpy as np
 import xarray as xr
-from eo_pipe.pipeline import ParallelBatch, PipelineComposition
+from eo_pipe.io.speckle import filter_lazily, lee_block, quegan_block
 
-from . import chunks
-from .config import EventConfig
-from .cube import check_cube
+from . import aoi, chunks
+from .config import Despeckle, EventConfig
+from .cube import check_cube, db_to_power, georeferenced, write_db_cube
+from .detection import to_db
 from .paths import EventPaths
+
+# Bytes per pixel and date of a chunk of both variables: the float64 working copies of the filter kernels (32 B each).
+BYTES_PER_DATE = 64
+
+
+def filtered(cube: xr.Dataset, settings: Despeckle) -> xr.Dataset:
+    """Lazy dB Filtered Cube of a dB *cube*: each variable goes to linear power per chunk, through Lee then Quegan.
+
+    The filters run on linear power (ADR-0004) in float32; the chunks are read with a halo, so the result does
+    not depend on the chunking. Nodata (NaN) is left out of every local statistic and stays nodata.
+    """
+    if cube.sizes["time"] < 2:
+        raise ValueError(f"the Quegan filter needs at least 2 Acquisitions, the Cube has {cube.sizes['time']}")
+    out = {}
+    for name, var in cube.data_vars.items():
+        power = var.data.map_blocks(db_to_power, dtype="float32")
+        lee = filter_lazily(
+            power, lee_block, settings.lee_window // 2, window=settings.lee_window, enl=settings.enl, nodata=None
+        )
+        quegan = filter_lazily(lee, quegan_block, settings.quegan_window // 2, window=settings.quegan_window, nodata=None)
+        out[name] = var.copy(data=quegan.map_blocks(to_db, dtype="float32"))
+    return xr.Dataset(out, coords=cube.coords, attrs=cube.attrs)
 
 
 def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
@@ -20,29 +42,26 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
     if not paths.cube.exists():
         raise FileNotFoundError(f"{paths.cube} is missing; run the stack stage first")
 
-    settings = config.despeckle
     budget = config.processing.memory_budget_mb
-    work = paths.interim / "_despeckle"
-    shutil.rmtree(work, ignore_errors=True)
-    # Inputs stay in linear power: the Cube is never converted to dB before this point.
-    ctx = (
-        PipelineComposition(workspace=work)
-        .add_step(
-            "lee_filter", ParallelBatch(), window_size=settings.lee_window, enl=settings.enl, memory_budget_mb=budget,
-            compress=True,
-        )
-        .add_step(
-            "quegan_filter", ParallelBatch(), window_size=settings.quegan_window, memory_budget_mb=budget,
-            compress=True,
-        )
-        .run([paths.cube], save_intermediate=True)
-    )
-    shutil.move(ctx.inputs[0], paths.filtered_cube)
-    shutil.rmtree(work, ignore_errors=True)
-
-    with xr.open_dataset(paths.cube) as cube:
+    cube, plan = chunks.open_cube(paths.cube, budget, bytes_per_date=BYTES_PER_DATE)
+    with cube, chunks.scheduler(plan.workers, budget):
+        window = None
+        if config.aoi_polygon is not None:
+            # Only the chunks that touch the polygon are filtered and stored. The Cube holds a wider window, so
+            # their halo is there.
+            vv = georeferenced(cube, "VV")
+            window = aoi.chunk_window(
+                config.aoi_polygon, vv.rio.crs, aoi.written_transform(vv), vv.shape[-2:], plan.side
+            )
+        paths.window.unlink(missing_ok=True)
+        stored = write_db_cube(filtered(cube, config.despeckle), paths.filtered_cube, window, plan.workers)
+        if window is not None:
+            np.savez(paths.window, window=window, side=plan.side)
+        grid = -(-cube.sizes["y"] // plan.side) * -(-cube.sizes["x"] // plan.side)
+        print(f"filtered cube: {stored}/{grid} chunks stored, {paths.filtered_cube.stat().st_size / 2**30:.2f} GB")
         expected = cube.sizes["time"]
-    filtered, plan = chunks.open_cube(paths.filtered_cube, budget, bytes_per_date=10)
-    with filtered, chunks.scheduler(plan.workers, budget):
-        check_cube(filtered, nodata=filtered.attrs.get("nodata"), expected=expected)
-        print(f"filtered cube: {paths.filtered_cube} ({filtered.sizes['time']} Acquisitions)")
+
+    filtered_cube, plan = chunks.open_cube(paths.filtered_cube, budget, bytes_per_date=10)
+    with filtered_cube, chunks.scheduler(plan.workers, budget):
+        check_cube(filtered_cube, nodata=None, expected=expected)
+        print(f"filtered cube: {paths.filtered_cube} ({filtered_cube.sizes['time']} Acquisitions)")
