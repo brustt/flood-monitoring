@@ -6,20 +6,20 @@ compare:
 - s1-before-composite
 - s1-after-composite
 layers:
-- slug: flood-extent
-  file: ../outputs/charente-2026-02/flood-extent.tif
+- slug: water-footprint
+  file: ../outputs/charente-2026-02/water-footprint.tif
   role: result
   kind: raster
-  title: Flood extent
+  title: Water footprint
   shown: true
   categories:
   - value: 0
     color: '#000000'
-    label: No flood
+    label: No water
     transparent: true
   - value: 1
     color: '#1f78b4'
-    label: Flooded
+    label: Water
 - slug: s1-before-composite
   file: ../outputs/charente-2026-02/s1-before-composite.tif
   role: imagery
