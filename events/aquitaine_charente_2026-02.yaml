@@ -1,0 +1,53 @@
+project: flood-monitoring
+event: aquitaine_charente_2026-02
+
+# Polygon file, relative to the repo root: the BD TOPO major hydro network of Nouvelle-Aquitaine and Pays de la
+# Loire (departments 16 17 19 24 33 40 47 86 87 44 49 53 72 85), buffered by 5 km (experiments/build_hydro_aoi.py).
+area_of_interest: ../data/flood-monitoring/external/hydro_major_buffer5000_simplified.gpkg
+
+# Calendar period of the flood shown on the Platform. Set by hand; it is not
+# the Event Start, which the pipeline detects from the Series.
+window:
+  start: 2026-02-01
+  end: 2026-03-01
+
+series:
+  collection: sentinel-1-rtc
+  start: 2026-01-01
+  end: 2026-03-01
+  orbit_state: descending
+  instrument_mode: IW
+  # One Series per orbit (docs/adr/0001). Descending orbits 8, 81, 110 cover 100% of the AOI
+  # (8: 81%, 81: 51%, 110: 27%; 8 + 81 alone: 94%), so no ascending orbit. 8 is the Main Series.
+  relative_orbit: [8, 81, 110]
+  assets: [vv, vh]
+
+# Speckle filters on linear power: Lee (spatial) then Quegan (temporal).
+# enl 4.4 is eo-pipe's default (Sentinel-1 IW GRDH).
+despeckle:
+  lee_window: 7
+  quegan_window: 7
+  enl: 4.4
+
+# Detection rules, see docs/detection-rules.md. These are the defaults.
+detection:
+  min_baseline: 8
+  drop_db: 4.0
+  event_share: 0.01
+  water_db: -15.0
+  permanent_fraction: 0.5
+  sieve_size: 20
+  sieve_connectedness: 8
+
+# Composite value ranges in dB, stretched to 0-255 as red VV, green VH, blue VV minus VH.
+# Chosen by looking at the Saintes Composites; also used for the manifest's rgb hint.
+composite:
+  vv: [-20, -3]
+  vh: [-26, -9]
+  vv_minus_vh: [2, 12]
+
+# Memory ceiling in MB for every stage after download (chunk size, GDAL cache, eo-pipe steps).
+# The AOI bbox is ~390 x 565 km = 2.2 Gpx at 10 m, so the whole-grid AOI mask alone takes ~2.1 GB;
+# 4096 leaves ~1.4 GB for chunks. Raised, not yet tried on a real run.
+processing:
+  memory_budget_mb: 16384.0

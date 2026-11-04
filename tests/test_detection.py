@@ -173,3 +173,32 @@ def test_flood_extent_flooded_areas_and_peak():
     areas = d.flooded_areas(masks, perm).values.tolist()
     assert areas == [1, 3, 2]
     assert d.peak(areas) == 1
+
+
+def test_water_footprint_is_union_of_water_masks_and_keeps_permanent_water():
+    masks = np.zeros((2, 1, 5), dtype=bool)
+    masks[0, 0, :2] = True  # includes pixel 0, which is Permanent Water
+    masks[1, 0, 1:4] = True
+    masks = xr.DataArray(masks, dims=("time", "y", "x"))
+    footprint = d.water_footprint(masks)
+    assert footprint.dtype == bool and footprint.values[0].tolist() == [True, True, True, True, False]
+
+
+def test_series_drop_counts_never_reads_the_blocks_outside_the_window():
+    import dask.array as da
+
+    rng = np.random.default_rng(2)
+    full = (rng.random((12, 10, 10)) * -20).astype("float32")
+    inside = np.zeros((10, 10), bool)
+    inside[:5, :5] = True
+    window = np.array([[True, False], [False, False]])  # 5 px chunks
+
+    def read(block, block_info=None):
+        loc = block_info[0]["array-location"]
+        assert loc[1][0] == 0 and loc[2][0] == 0, "read a block outside the window"
+        return block
+
+    db = xr.DataArray(da.from_array(full, chunks=(12, 5, 5)).map_blocks(read, dtype="float32"), dims=("time", "y", "x"))
+    expected = d.drop_counts(full, range(8, 12), 8, 4.0, inside)
+    got = d.series_drop_counts(db, range(8, 12), 8, 4.0, mask(inside).chunk(5), (window, 5)).compute()
+    assert got.tolist() == expected.tolist()

@@ -105,3 +105,102 @@ def test_per_series_stages_run_for_every_orbit_and_merge_once(paths, config):
         ("export", (8, 110), None, True),
     ]
     assert paths.series_paths(110).processed.is_dir()
+
+
+PER_SERIES = ORDER[:6]
+
+
+def multi_orbit(config):
+    from dataclasses import replace
+
+    return replace(config, series=replace(config.series, relative_orbits=(8, 110)))
+
+
+def recording_stages(calls):
+    return {
+        name: SimpleNamespace(run=lambda config, paths, force=False, name=name: calls.append((name, paths.orbit)))
+        for name in cli.STAGES
+    }
+
+
+def producing_stages(calls):
+    """Fake stages that write their output file, as the real ones do."""
+    outputs = {
+        "download": lambda p: [p.raw / "subset.tif"],
+        "stack": lambda p: [p.cube],
+        "despeckle": lambda p: [p.filtered_cube],
+        "composite": lambda p: [p.before_composite, p.after_composite],
+    }
+
+    def stage(name):
+        def run(config, paths, force=False):
+            calls.append((name, paths.orbit))
+            for out in outputs.get(name, lambda p: [])(paths):
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.touch()
+
+        return SimpleNamespace(run=run)
+
+    return {name: stage(name) for name in cli.STAGES}
+
+
+def test_per_series_stages_run_orbit_by_orbit(paths, config):
+    calls = []
+    cli.run_stages(multi_orbit(config), paths, PER_SERIES, stages=recording_stages(calls))
+    assert calls == [(name, orbit) for orbit in (8, 110) for name in PER_SERIES]
+
+
+def test_intermediates_are_deleted_once_the_next_stage_produced_its_result(paths, config):
+    cli.run_stages(config, paths, PER_SERIES, stages=producing_stages([]))
+    assert not paths.raw.exists() and not paths.cube.exists() and not paths.filtered_cube.exists()
+    assert paths.before_composite.exists() and paths.after_composite.exists()
+
+
+def test_keep_intermediates_keeps_them_all(paths, config):
+    cli.run_stages(config, paths, PER_SERIES, stages=producing_stages([]), keep_intermediates=True)
+    assert paths.raw.exists() and paths.cube.exists() and paths.filtered_cube.exists()
+
+
+def test_only_one_orbits_intermediates_exist_at_a_time(paths, config):
+    seen = []
+    stages = producing_stages([])
+    stack = stages["stack"].run
+
+    def stack_then_look(cfg, p, force=False):
+        stack(cfg, p, force)
+        seen.append(sorted(q.parent.name for q in paths.interim.glob("orbit-*/cube.nc")))
+
+    stages["stack"] = SimpleNamespace(run=stack_then_look)
+    cli.run_stages(multi_orbit(config), paths, PER_SERIES, stages=stages)
+    assert seen == [["orbit-8"], ["orbit-110"]]
+
+
+def test_a_stage_that_produced_nothing_keeps_its_input(paths, config):
+    stages = producing_stages([])
+    stages["composite"] = SimpleNamespace(run=lambda config, paths, force=False: None)  # e.g. no VH: no Composites
+    cli.run_stages(config, paths, PER_SERIES, stages=stages)
+    assert paths.filtered_cube.exists()
+
+
+def test_stages_up_to_despeckle_are_skipped_when_a_later_requested_stage_is_done(paths, config):
+    paths.ensure()
+    paths.after_composite.touch()
+    calls = []
+    cli.run_stages(config, paths, PER_SERIES, stages=recording_stages(calls))
+    assert [c[0] for c in calls] == ["event", "flood-extent", "composite"]
+
+
+def test_force_does_not_skip_superseded_stages(paths, config):
+    paths.ensure()
+    paths.after_composite.touch()
+    calls = []
+    cli.run_stages(config, paths, PER_SERIES, force=True, stages=recording_stages(calls))
+    assert [c[0] for c in calls] == PER_SERIES
+
+
+def test_a_single_requested_stage_is_never_skipped(paths, config):
+    paths.ensure()
+    paths.after_composite.touch()
+    calls = []
+    cli.run_stages(config, paths, ["despeckle"], stages=recording_stages(calls))
+    assert [c[0] for c in calls] == ["despeckle"]

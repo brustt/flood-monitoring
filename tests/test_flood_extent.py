@@ -12,7 +12,7 @@ from flood_monitoring.paths import EventPaths
 
 SIZE = 40
 DATES = pd.date_range("2026-01-01", periods=6, freq="6D")  # Event Start is the 4th
-WATER, LAND = 0.01, 0.1  # linear power: -20 dB, -10 dB
+WATER, LAND = -20.0, -10.0  # dB
 PIXEL_KM2 = 10 * 10 / 1e6
 
 
@@ -54,6 +54,8 @@ def test_run_writes_masks_extent_and_areas(paths):
     assert permanent.sum() == 5 * SIZE and permanent[:5].all()
     extent = read_mask(paths.flood_extent)
     assert extent.sum() == 100 and extent[10:20, :10].all()
+    footprint = read_mask(paths.water_footprint)
+    assert footprint.sum() == 100 + 5 * SIZE and footprint[:5].all() and footprint[10:20, :10].all()
     assert not read_mask(paths.water_mask("2026-01-25"))[30, 30]
     assert not paths.sieve_work.exists()
 
@@ -72,8 +74,16 @@ def test_run_writes_masks_extent_and_areas(paths):
     }
 
 
+def test_run_redoes_an_older_run_without_water_footprint(paths, capsys):
+    paths.flood_extent.write_bytes(b"")
+    flood_extent.run(load_event_config("saintes-2026-02"), paths)
+    assert "skip" not in capsys.readouterr().out
+    assert paths.water_footprint.exists()
+
+
 def test_run_skips_when_flood_extent_exists(paths, capsys):
     paths.flood_extent.write_bytes(b"")
+    paths.water_footprint.write_bytes(b"")
     flood_extent.run(load_event_config("saintes-2026-02"), paths)
     assert "skip" in capsys.readouterr().out
     assert "peak" not in json.loads(paths.summary.read_text())

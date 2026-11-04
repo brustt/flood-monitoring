@@ -20,6 +20,34 @@ def aoi_mask(polygon: BaseGeometry, crs, transform: Affine, shape_yx: tuple[int,
     )
 
 
+def chunk_window(
+    polygon: BaseGeometry, crs, transform: Affine, shape_yx: tuple[int, int], side: int, margin_px: int = 1
+) -> np.ndarray:
+    """Boolean (rows, columns) grid of the *side* x *side* chunks of the grid that touch *polygon* (EPSG:4326).
+
+    The test is done in the grid's CRS, with a margin of *margin_px* pixels (the speckle filters' halo).
+    """
+    project = Transformer.from_crs(4326, crs, always_xy=True).transform
+    projected = shapely_transform(project, polygon).buffer(abs(transform.a) * margin_px)
+    mask = rasterio.features.geometry_mask(
+        [projected], out_shape=shape_yx, transform=transform, invert=True, all_touched=True
+    )
+    height, width = shape_yx
+    rows, cols = -(-height // side), -(-width // side)
+    padded = np.zeros((rows * side, cols * side), dtype=bool)
+    padded[:height, :width] = mask
+    return padded.reshape(rows, side, cols, side).any(axis=(1, 3))
+
+
+def block_in_window(window: np.ndarray, side: int, rows: tuple[int, int], cols: tuple[int, int]) -> bool:
+    """Whether the block of pixels ``rows[0]:rows[1]``, ``cols[0]:cols[1]`` overlaps a chunk of the *window* grid.
+
+    *window* is the stack stage's boolean grid of *side* x *side* chunks, whatever the chunk side of the block.
+    """
+    (r0, r1), (c0, c1) = rows, cols
+    return bool(window[r0 // side : -(-r1 // side), c0 // side : -(-c1 // side)].any())
+
+
 def written_transform(da: xr.DataArray) -> Affine:
     """The transform written on *da* with ``rio.write_transform`` if any, else derived from its coords.
 

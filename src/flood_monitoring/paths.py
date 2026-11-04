@@ -46,12 +46,17 @@ class EventPaths:
 
     @property
     def cube(self) -> Path:
-        """The Cube: all Acquisitions stacked, VV and VH, linear power."""
+        """The Cube: all Acquisitions stacked, VV and VH, int16 dB x 100 (nodata -32768), zlib."""
         return self.interim / "cube.nc"
 
     @property
+    def window(self) -> Path:
+        """The Filtered Cube's window (``window``: chunks written, ``side``: chunk side in pixels), ``.npz``; only with a polygon."""
+        return self.interim / "window.npz"
+
+    @property
     def filtered_cube(self) -> Path:
-        """The Cube after Lee then Quegan."""
+        """The Cube after Lee then Quegan, stored like the Cube."""
         return self.interim / "filtered-cube.nc"
 
     @property
@@ -100,6 +105,11 @@ class EventPaths:
     @property
     def flood_extent(self) -> Path:
         return self.processed / "flood-extent.tif"
+
+    @property
+    def water_footprint(self) -> Path:
+        """Water of any Post-event Acquisition, Permanent Water included."""
+        return self.processed / "water-footprint.tif"
 
     @property
     def before_composite(self) -> Path:

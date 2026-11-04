@@ -44,7 +44,8 @@ def assert_matches(reference: Path, processed: Path, summary: Path) -> None:
                 assert data.dtype == np.int16, key
                 nodata = data == STORED_NODATA
                 assert np.array_equal(nodata, expected[key] == NODATA), key
-                np.testing.assert_allclose(data[~nodata] * SCALE, expected[key][~nodata], atol=SCALE / 2 + 1e-6)
+                # the Cube is int16 too: its rounding (half a unit) adds to the Composite's own
+                np.testing.assert_allclose(data[~nodata] * SCALE, expected[key][~nodata], atol=SCALE + 1e-6)
             else:
                 assert np.array_equal(data, expected[key]), key
     for key, m in meta.items():

@@ -10,6 +10,7 @@ import json
 from datetime import date, timedelta
 from pathlib import Path
 
+import dask.array as da
 import numpy as np
 import rasterio
 import rioxarray  # noqa: F401  (registers the .rio accessor)
@@ -22,6 +23,8 @@ from shapely.ops import transform as shapely_transform
 from flood_monitoring import config as config_module
 from flood_monitoring.composite import SCALE, STORED_NODATA
 from flood_monitoring.config import EventConfig, EventGrid, Series, Window
+from flood_monitoring.cube import write_db_cube
+from flood_monitoring.detection import to_db
 from flood_monitoring.paths import EventPaths
 
 EVENT = "synthetic-2026-01"
@@ -95,7 +98,7 @@ def write_cube(
     salt_fraction: float,
     seed: int = 26,
 ) -> None:
-    """A (Filtered) Cube in eo-pipe's format: VV, VH float32 (time, y, x) linear power."""
+    """A (Filtered) Cube: VV, VH int16 dB (time, y, x), made from synthetic linear power."""
     rng = np.random.default_rng(seed)
     vv = np.empty((dates, size, size), dtype="float32")
     for t in range(dates):  # same stream as one (dates, size, size) draw, without the float64 copy
@@ -114,8 +117,10 @@ def write_cube(
         arr[:, square, square] = CUBE_NODATA
 
     times = np.array([np.datetime64(d, "ns") for d in cube_dates(dates)])
+    side = min(chunk, size)
+    db = {n: to_db(a, CUBE_NODATA) for n, a in (("VV", vv), ("VH", vh))}
     ds = xr.Dataset(
-        {"VV": (("time", "y", "x"), vv), "VH": (("time", "y", "x"), vh)},
+        {n: (("time", "y", "x"), da.from_array(a, chunks=(dates, side, side))) for n, a in db.items()},
         coords={
             "time": times,
             "y": ORIGIN[1] - PIXEL * (np.arange(size) + 0.5),
@@ -123,16 +128,11 @@ def write_cube(
         },
     )
     ds = ds.rio.write_crs(CRS).rio.write_coordinate_system()
-    side = min(chunk, size)
     for var in ("VV", "VH"):
-        ds[var].encoding["_FillValue"] = CUBE_NODATA
         ds[var].encoding.pop("grid_mapping", None)
         ds[var].attrs.pop("grid_mapping", None)
-        ds[var].attrs["nodata"] = CUBE_NODATA
-        ds[var].encoding["chunksizes"] = (dates, side, side)
-    ds.attrs["nodata"] = CUBE_NODATA
     path.parent.mkdir(parents=True, exist_ok=True)
-    ds.to_netcdf(path)
+    write_db_cube(ds, path, window=None, workers=2)
 
 
 def single_series_config(
@@ -198,6 +198,7 @@ def write_series(
     flooded = np.zeros((size, size), "uint8")
     flooded[r0:r1, c0:c1] = 1
     _write(paths.flood_extent, flooded, transform, None)
+    _write(paths.water_footprint, flooded, transform, None)
     permanent = np.zeros((size, size), "uint8")
     permanent[_i(0.85, size) : max(_i(0.875, size), _i(0.85, size) + 1)] = 1
     _write(paths.permanent_water, permanent, transform, None)

@@ -13,6 +13,8 @@ import xarray as xr
 from dask import delayed
 from dask.delayed import Delayed
 
+from .aoi import block_in_window
+
 CANDIDATE_BATCH = 8  # Event Start candidates per read of the Filtered Cube
 
 
@@ -64,9 +66,18 @@ def drop_counts(
 
 
 def series_drop_counts(
-    db: xr.DataArray, candidates: range, min_baseline: int, drop_db: float, inside: xr.DataArray | None = None
+    db: xr.DataArray,
+    candidates: range,
+    min_baseline: int,
+    drop_db: float,
+    inside: xr.DataArray | None = None,
+    window: tuple[np.ndarray, int] | None = None,
 ) -> Delayed:
-    """:func:`drop_counts` of every spatial chunk of a (time, y, x) *db*, summed (delayed)."""
+    """:func:`drop_counts` of every spatial chunk of a (time, y, x) *db*, summed (delayed).
+
+    *window* is the stack stage's (boolean chunk grid, chunk side); chunks outside it hold no pixel of
+    the Area of Interest, so they are neither read nor counted.
+    """
     _check_length(db.sizes["time"], min_baseline)
     db = db.transpose("time", "y", "x").chunk({"time": -1})
     blocks = db.data.to_delayed()
@@ -74,11 +85,13 @@ def series_drop_counts(
     if inside is not None:
         inside = inside.chunk({"y": db.chunksizes["y"], "x": db.chunksizes["x"]})
         masks = inside.data.to_delayed()
+    rows, cols = (np.concatenate([[0], np.cumsum(db.chunks[axis])]) for axis in (1, 2))
     parts = [
         delayed(drop_counts)(blocks[0, i, j], candidates, min_baseline, drop_db, None if masks is None else masks[i, j])
         for i, j in np.ndindex(blocks.shape[1:])
+        if window is None or block_in_window(window[0], window[1], rows[i : i + 2], cols[j : j + 2])
     ]
-    return delayed(sum)(parts)
+    return delayed(sum)(parts or [np.zeros((len(candidates), 2), dtype="int64")])
 
 
 def event_start(
@@ -88,6 +101,7 @@ def event_start(
     min_share: float,
     inside: xr.DataArray | None = None,
     batch: int = CANDIDATE_BATCH,
+    window: tuple[np.ndarray, int] | None = None,
 ) -> tuple[int, list[float]]:
     """Index of the first step whose Drop share exceeds *min_share*, and the share per candidate up to it.
 
@@ -102,7 +116,7 @@ def event_start(
     shares: list[float] = []
     for first in range(min_baseline, n, batch):
         candidates = range(first, min(first + batch, n))
-        counts = series_drop_counts(db, candidates, min_baseline, drop_db, inside).compute()
+        counts = series_drop_counts(db, candidates, min_baseline, drop_db, inside, window).compute()
         for k, (n_valid, n_drop) in zip(candidates, counts):
             share = float(n_drop / n_valid) if n_valid else 0.0
             shares.append(share)
@@ -129,6 +143,11 @@ def permanent_water(pre_water: xr.DataArray, fraction: float) -> xr.DataArray:
 def flood_extent(water_masks: xr.DataArray, permanent: xr.DataArray) -> xr.DataArray:
     """Union of the post-event Water Masks, minus Permanent Water."""
     return water_masks.any("time") & ~permanent
+
+
+def water_footprint(water_masks: xr.DataArray) -> xr.DataArray:
+    """Union of the post-event Water Masks, Permanent Water included."""
+    return water_masks.any("time")
 
 
 def flooded_areas(water_masks: xr.DataArray, permanent: xr.DataArray) -> xr.DataArray:

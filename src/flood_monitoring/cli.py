@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 from dataclasses import replace
 from types import ModuleType
@@ -31,16 +32,58 @@ STAGES = {
 }
 
 
+# What a per-series stage consumes and what it produces: the consumed folder or file is deleted once the
+# produced one exists, unless --keep-intermediates.
+INTERMEDIATES = {
+    "stack": (lambda p: p.raw, lambda p: p.cube),
+    "despeckle": (lambda p: p.cube, lambda p: p.filtered_cube),
+    "composite": (lambda p: p.filtered_cube, lambda p: p.after_composite),
+}
+# The output that shows a stage is done, whether or not its input was deleted since.
+DONE = {
+    "stack": lambda p: p.cube,
+    "despeckle": lambda p: p.filtered_cube,
+    "composite": lambda p: p.after_composite,  # committed last
+}
+
+
+def _release(name: str, paths: EventPaths) -> None:
+    """Delete what stage *name* consumed, once what it produced exists."""
+    if name not in INTERMEDIATES:
+        return
+    consumed, produced = (get(paths) for get in INTERMEDIATES[name])
+    if produced.exists() and consumed.exists():
+        if consumed.is_dir():
+            shutil.rmtree(consumed)
+        else:
+            consumed.unlink()
+        print(f"removed {consumed}")
+
+
+def _superseded(name: str, later: list[str], paths: EventPaths) -> bool:
+    """Whether a stage up to the despeckle is skipped because a later requested stage is already done.
+
+    Its input is deleted by default, so running it again would only rebuild what the later stage no longer needs.
+    """
+    return name in ("download", "stack", "despeckle") and any(n in DONE and DONE[n](paths).exists() for n in later)
+
+
 def run_stages(
     config: EventConfig,
     paths: EventPaths,
     names: list[str],
     force: bool = False,
     stages: dict[str, ModuleType] | None = None,
+    keep_intermediates: bool = False,
 ) -> None:
     """Run *names* in order. Stages whose output exists skip themselves; the download
     searches the Series and eo-stac skips the Subsets already on disk, so a partial
-    download is resumed."""
+    download is resumed.
+
+    Consecutive per-series stages run one orbit at a time, so only one orbit's intermediates exist at once. The
+    raw Subsets, the Cube and the Filtered Cube are deleted once the next stage has produced its result, unless
+    *keep_intermediates*.
+    """
     stages = stages or STAGES
     orbits = config.series.relative_orbits
     # A single orbit keeps the flat folders: its results already are the global Layers.
@@ -48,15 +91,29 @@ def run_stages(
     paths.ensure()
     for p in series_paths:
         p.ensure()
-    for name in names:
-        if name not in PER_SERIES:
-            print(f"[{name}]")
-            stages[name].run(config, paths, force=force)
+    i = 0
+    while i < len(names):
+        if names[i] not in PER_SERIES:
+            print(f"[{names[i]}]")
+            stages[names[i]].run(config, paths, force=force)
+            i += 1
             continue
+        j = i
+        while j < len(names) and names[j] in PER_SERIES:
+            j += 1
+        group = names[i:j]
         for orbit, p in zip(orbits, series_paths):
-            print(f"[{name}]" if len(orbits) == 1 else f"[{name}] relative orbit {orbit}")
             series_config = replace(config, series=replace(config.series, relative_orbits=(orbit,)))
-            stages[name].run(series_config, p, force=force)
+            for k, name in enumerate(group):
+                label = f"[{name}]" if len(orbits) == 1 else f"[{name}] relative orbit {orbit}"
+                if not force and _superseded(name, group[k + 1 :], p):
+                    print(f"{label} skip: a later stage is done")
+                    continue
+                print(label)
+                stages[name].run(series_config, p, force=force)
+                if not keep_intermediates:
+                    _release(name, p)
+        i = j
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -67,6 +124,10 @@ def main(argv: list[str] | None = None) -> int:
     rp.add_argument("event", nargs="?", default=DEFAULT_EVENT, help=f"Event slug (default {DEFAULT_EVENT})")
     rp.add_argument("--stage", choices=list(STAGES), help="run this stage only")
     rp.add_argument("--force", action="store_true", help="redo stages whose output exists, download included")
+    rp.add_argument(
+        "--keep-intermediates", action="store_true",
+        help="keep the raw Subsets, the Cube and the Filtered Cube (deleted by default once the next stage has run)",
+    )
     sp = sub.add_parser("show", help="print the config and resolved paths of an Event")
     sp.add_argument("event", nargs="?", default=DEFAULT_EVENT, help=f"Event slug (default {DEFAULT_EVENT})")
     a = ap.parse_args(argv)
@@ -84,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
 
     names = [a.stage] if a.stage else list(STAGES)
     try:
-        run_stages(config, paths, names, force=a.force)
+        run_stages(config, paths, names, force=a.force, keep_intermediates=a.keep_intermediates)
     except (NotImplementedError, FileNotFoundError, RuntimeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

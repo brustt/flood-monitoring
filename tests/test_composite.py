@@ -12,8 +12,8 @@ def yx(values):
 
 
 def test_bands_are_vv_vh_and_their_difference_in_db():
-    vv = yx([[0.1, 0.01]])  # -10 dB, -20 dB
-    vh = yx([[0.01, 0.001]])  # -20 dB, -30 dB
+    vv = yx([[-10.0, -20.0]])
+    vh = yx([[-20.0, -30.0]])
     out = composite_bands(vv, vh)
     assert out.dims == ("band", "y", "x") and out.shape == (3, 1, 2)
     assert out["band"].values.tolist() == ["vv", "vh", "vv_minus_vh"]
@@ -25,10 +25,11 @@ def test_bands_are_vv_vh_and_their_difference_in_db():
 
 
 def test_invalid_pixels_become_declared_nodata_in_every_band():
-    vv = yx([[0.1, -32768.0, 0.1, np.nan]])
-    vh = yx([[0.1, 0.1, 0.0, 0.1]])
-    out = composite_bands(vv, vh, nodata=-32768.0).values
-    assert np.all(out[:, 0, 1:] == NODATA)
+    vv = yx([[-10.0, np.nan, -10.0, -10.0]])
+    vh = yx([[-10.0, -10.0, np.nan, -10.0]])
+    out = composite_bands(vv, vh).values
+    assert np.all(out[:, 0, 1:3] == NODATA)
+    assert np.all(out[:, 0, 3] != NODATA)
     assert np.all(out[:, 0, 0] != NODATA)
 
 

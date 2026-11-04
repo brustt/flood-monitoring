@@ -41,6 +41,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
         paths.raw,
         assets=list(series.assets),
         bbox=list(config.area_of_interest),
+        polygon=config.aoi_polygon,  # Subsets keep only the blocks the polygon touches
         sign=planetary_computer.sign,
         overwrite=force,
     )

@@ -7,7 +7,7 @@ import numpy as np
 from . import aoi, chunks, raster
 from .config import EventConfig
 from .cube import georeferenced
-from .detection import event_start, to_db_lazy
+from .detection import event_start
 from .paths import EventPaths
 
 
@@ -28,11 +28,20 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
     ds, plan = chunks.open_cube(paths.filtered_cube, budget, bytes_per_date=40)
     with ds, chunks.scheduler(plan.workers, budget):
         dates = acquisition_dates(ds["time"].values)
-        db = to_db_lazy(georeferenced(ds, "VV"), ds.attrs.get("nodata"))
+        db = georeferenced(ds, "VV")
         # the share is of the polygon's pixels, not the bounding box's
         inside = aoi.mask_like(config.aoi_polygon, db) if config.aoi_polygon is not None else None
+        window = None
+        if inside is not None and paths.window.exists():
+            # chunks outside the stack stage's window hold no pixel of the polygon: skip them
+            with np.load(paths.window) as saved:
+                window = saved["window"], int(saved["side"])
+            rows, cols = (-(-n // window[1]) for n in db.shape[-2:])
+            if window[0].shape != (rows, cols):
+                print(f"ignore {paths.window}: its grid {window[0].shape} does not match the Cube's {(rows, cols)}")
+                window = None
         try:
-            k, shares = event_start(db, rules.min_baseline, rules.drop_db, rules.event_share, inside)
+            k, shares = event_start(db, rules.min_baseline, rules.drop_db, rules.event_share, inside, window=window)
         except ValueError as exc:
             orbit = f"relative orbit {paths.orbit}: " if paths.orbit is not None else ""
             raise ValueError(f"{orbit}{exc}") from exc

@@ -12,6 +12,7 @@ uv run flood-monitoring show saintes-2026-02             # config and resolved p
 uv run flood-monitoring run saintes-2026-02              # download to export
 uv run flood-monitoring run saintes-2026-02 --stage event # one stage
 uv run flood-monitoring run saintes-2026-02 --force       # redo stages whose output exists
+uv run flood-monitoring run saintes-2026-02 --keep-intermediates  # keep raw/, cube.nc, filtered-cube.nc
 uv run pytest
 ```
 
@@ -37,11 +38,15 @@ processing:
   memory_budget_mb: 2048
 ```
 
-- `stack` and `despeckle` pass it to eo-pipe (`stack_tiles`, `lee_filter`, `quegan_filter`).
+- `stack` passes it to eo-pipe (`stack_tiles`), then converts the stacked float32 power to the Cube. `despeckle` plans its own chunks from it.
 - `event`, `flood-extent`, `composite` and `merge` read the Cube (or the warped Series rasters) in square spatial chunks, the whole time axis per chunk. Each prints `chunks: <side> px, <workers> at a time`. The side is planned from the budget, net of two GDAL block caches (rasterio's and the system GDAL's, `max(32, budget / 16)` MB each) and the whole-grid Area of Interest mask (1 byte per pixel), then shrunk to whole multiples (or divisors) of the Cube's stored chunks.
 - A budget too small for one 16 px chunk stops the stage with `memory_budget_mb=<value> is too small … set memory_budget_mb to at least <n>`.
 
 Scratch disk, uncompressed: `flood-extent` needs `2 x (post-event dates + 1) x height x width` bytes while sieving, then half of it (the sieved masks become the Water Masks and Permanent Water); `merge` needs `26 x Series x height x width` bytes on the Event grid for the warped rasters (`processed/<event>/_merge/`, removed afterwards).
+
+The Cube and the Filtered Cube are stored as int16 dB x 100 (`scale_factor` 0.01, nodata -32768, zlib) and read as float32 dB with NaN for nodata; rounding is 0.005 dB. The speckle filters convert to linear power per chunk, in memory. With an Area of Interest polygon, only the chunks that touch it are stored (the Cube also keeps the filters' halo); the others read back as nodata. `window.npz` records the Filtered Cube's chunks.
+
+Intermediates are deleted by default: `raw/` once the Cube exists, `cube.nc` once the Filtered Cube exists, `filtered-cube.nc` once the Composites exist. `--keep-intermediates` keeps them. Per-series stages run one orbit at a time (download to composite for orbit 1, then orbit 2…), so only one orbit's intermediates are on disk at once, and a stage up to `despeckle` is skipped when a later requested stage of that orbit is already done. To rerun a stage whose input was deleted, run the earlier stages again (or the whole run) with `--keep-intermediates`.
 
 Each of `event`, `flood-extent`, `composite` and `merge` first deletes its own outputs, then writes rasters as `*.partial` files renamed on success and `summary.json` atomically, so a stage killed midway is redone by the next run. Re-running an upstream stage does not invalidate later ones: run them again with `--force`.
 

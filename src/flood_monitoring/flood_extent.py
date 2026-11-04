@@ -11,7 +11,7 @@ import xarray as xr
 from . import chunks, raster
 from .config import Detection, EventConfig
 from .cube import georeferenced
-from .detection import flood_extent, flooded_areas, peak, permanent_water, to_db_lazy, water
+from .detection import flood_extent, flooded_areas, peak, permanent_water, water, water_footprint
 from .event import acquisition_dates
 from .paths import EventPaths
 
@@ -48,7 +48,7 @@ def extent_summary(
 
 
 def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
-    if paths.flood_extent.exists() and not force:
+    if paths.flood_extent.exists() and paths.water_footprint.exists() and not force:
         print(f"skip: {paths.flood_extent} exists")
         return
     if not paths.summary.exists():
@@ -57,7 +57,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
         raise FileNotFoundError(f"{paths.filtered_cube} is missing; run the despeckle stage first")
 
     # The skip sentinel first, then any leftovers (stale dates, partial files) of an earlier run.
-    raster.clear([paths.flood_extent, paths.permanent_water], [paths.water_masks, paths.sieve_work])
+    raster.clear([paths.flood_extent, paths.water_footprint, paths.permanent_water], [paths.water_masks, paths.sieve_work])
     rules = config.detection
     summary = json.loads(paths.summary.read_text())
     budget = config.processing.memory_budget_mb
@@ -68,7 +68,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
         post_dates = dates[start:]
         vv = georeferenced(ds, "VV")
         crs = vv.rio.crs
-        wet = water(to_db_lazy(vv, ds.attrs.get("nodata")), rules.water_db)
+        wet = water(vv, rules.water_db)
         template = wet.isel(time=0, drop=True)
 
         # Raw masks: Permanent Water first (water in most pre-event dates, thresholded before sieve),
@@ -84,7 +84,10 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
             masks = xr.concat(sieved[1:], dim="time").assign_coords(time=ds["time"].values[start:])
             extent = flood_extent(masks, permanent)
             areas, n_permanent, n_extent = raster.write_partial(
-                [raster.Raster(extent, paths.flood_extent, "uint8", crs)],
+                [
+                    raster.Raster(extent, paths.flood_extent, "uint8", crs),
+                    raster.Raster(water_footprint(masks), paths.water_footprint, "uint8", crs),
+                ],
                 flooded_areas(masks, permanent),
                 permanent.sum(),
                 extent.sum(),
@@ -105,5 +108,5 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
                        pixel_area_km2(template))
     )
     raster.write_json(paths.summary, summary)
-    raster.commit([paths.flood_extent])  # last: the skip sentinel of the stage
+    raster.commit([paths.water_footprint, paths.flood_extent])  # last: the skip sentinel of the stage
     print(f"Peak {summary['peak']}, Flood Extent {summary['flood_extent_km2']} km2")

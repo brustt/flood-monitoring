@@ -1,6 +1,6 @@
 # Detection rules (settled on saintes-2026-02, issue #5)
 
-Input: the Filtered Cube, VV only, converted from linear power to dB (`10·log10`). The Filtered Cube has 31 Acquisitions (2025-09-02 … 2026-03-01), no nodata pixels. Parameters below are defaults for `events/<event>.yaml`; the reference Event is saintes-2026-02.
+Input: the Filtered Cube, VV only, stored as dB (int16 hundredths of a dB; the speckle filters work on linear power and convert back). The Filtered Cube has 31 Acquisitions (2025-09-02 … 2026-03-01), no nodata pixels. Parameters below are defaults for `events/<event>.yaml`; the reference Event is saintes-2026-02.
 
 ## Event Start
 
