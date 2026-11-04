@@ -30,3 +30,15 @@ def test_cog_output_is_deflate(tmp_path):
     with rasterio.open(dst) as ds:
         assert ds.compression.value == "DEFLATE"
         assert ds.tags(ns="IMAGE_STRUCTURE")["PREDICTOR"] == "3"
+
+
+def test_int16_cog_keeps_predictor_2_scale_and_nodata(tmp_path):
+    src, dst = tmp_path / "s.tif", tmp_path / "d.tif"
+    raster.write_partial([raster.Raster(grid("int16"), src, "int16", CRS, nodata=-32768, scale=0.01)])
+    raster.commit([src])
+    export.write_cog(src, dst, categorical=False)
+    with rasterio.open(dst) as ds:
+        assert ds.compression.value == "DEFLATE"
+        assert ds.tags(ns="IMAGE_STRUCTURE")["PREDICTOR"] == "2"
+        assert ds.scales == (0.01,)
+        assert ds.nodata == -32768
