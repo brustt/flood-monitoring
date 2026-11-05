@@ -3,52 +3,60 @@
 AOI: BD TOPO major hydro network (Nouvelle-Aquitaine + Pays de la Loire, 23,810 segments), buffered 5 km, dissolved,
 simplified at 100 m (5,630 vertices): 53,925 km², bbox 390 x 565 km.
 Built by `experiments/build_hydro_aoi.py`, orbits found by `experiments/s1_orbits_for_aoi.py`
-(Planetary Computer `sentinel-1-rtc`, IW, 2025-09-01 to 2026-03-30).
+(Planetary Computer `sentinel-1-rtc`, IW, 2026-01-01 to 2026-03-01, the Series of the Event YAML).
 
 | Relative orbit | State | AOI coverage | Acquisition dates | Slices/date | Selected |
 |---|---|---|---|---|---|
-| 8 | descending | 80.6% | 35 (2025-09-02 .. 2026-03-25, every 6 days) | 4.4 | yes, Main Series |
-| 81 | descending | 51.4% | 36 (2025-09-01 .. 2026-03-30) | 4.4 | yes |
-| 110 | descending | 26.6% | 34 (2025-09-03 .. 2026-03-26) | 2.5 | yes |
-| 154 | descending | 3.9% | 34 | 1.5 | no, covered by 8/81/110 |
-| 37 | descending | 0.2% | 33 | 1.0 | no |
-| 30 | ascending | 78.4% | 35 | 4.5 | no |
-| 132 | ascending | 58.5% | 35 | 3.9 | no |
-| 103 | ascending | 14.1% | 35 | 3.9 | no |
-| 59 | ascending | 5.6% | 35 | 2.0 | no |
+| 8 | descending | 80.6% | 10 (2026-01-06 .. 2026-03-01, every 6 days) | 4.4 | yes, Main Series |
+| 81 | descending | 51.4% | 10 (2026-01-05 .. 2026-02-28) | 4.0 | yes |
+| 110 | descending | 26.5% | 9 (2026-01-01 .. 2026-02-24, 2026-01-19 missing) | 2.6 | yes |
+| 154 | descending | 3.9% | 10 | 1.5 | no, covered by 8/81/110 |
+| 37 | descending | 0.2% | 9 | 1.0 | no |
+| 30 | ascending | 78.4% | 10 | 4.4 | no |
+| 132 | ascending | 58.5% | 10 | 4.0 | no |
+| 103 | ascending | 14.1% | 10 | 3.8 | no |
+| 59 | ascending | 5.6% | 10 | 2.0 | no |
 
 Cumulative descending coverage: 8 alone 80.6%, 8 + 81 94.3%, 8 + 81 + 110 100%. Descending is enough, as in the
-existing Events. Each orbit is acquired every 6 days; a few dates are missing for 110 and 154 (see the script output for the lists).
+existing Events. Each orbit is acquired every 6 days; dates are missing for 110 and 37 (see the script output for the lists).
 
-## Feasibility, Series 2025-01-01 to 2026-03-01
+## Feasibility: disk, Series 2026-01-01 to 2026-03-01 (the Event YAML)
 
-Orbit 8: 60 dates, 275 slices, grid 2.1 Gpx. Orbit 81: 62 dates, 275 slices, 1.35 Gpx. Orbit 110: 58 dates,
-139 slices, 1.0 Gpx. Baselines measured on `charente-2026-02` (35 dates, 108 Mpx): raw Subsets and the Cube are
-float32, uncompressed; Cube and Filtered Cube = 8 B x px x dates (31 GB measured).
+Estimated by `experiments/estimate_disk.py` from the STAC footprints and the AOI polygon, with the sizes measured on
+`charente-2026-02` (raw Subsets 9.4 B per pixel of slice and bbox window; float32 stack 8 B per pixel and date of the 256 px
+chunks touching the polygon; Cube 2.4 B and Filtered Cube 2.8 B, int16 zlib, #39). Checked against that run: estimated
+31 GB raw and 39 GB peak against 34 GB and 41.7 GB measured. Raw Subsets are the whole bbox window of each slice: the
+blocks outside the polygon are not skipped (a 2 km river buffer touches nearly every block anyway; not checked for this
+fat polygon). Footprints include nodata corners, so raw is slightly high.
 
-| | Raw (vv+vh) | Cube | Filtered Cube |
-|---|---|---|---|
-| orbit 8 | 690 GB | 1,020 GB | 1,020 GB |
-| orbit 81 | 470 GB | 670 GB | 670 GB |
-| orbit 110 | 300 GB | 470 GB | 470 GB |
-| total | 1.46 TB | 2.16 TB | 2.16 TB |
+| | Dates | Slices | Raw (vv+vh) | float32 stack (temporary) | Cube | Filtered Cube |
+|---|---|---|---|---|---|---|
+| orbit 8 | 10 | 44 | 132 GB | 44 GB | 13 GB | 13 GB |
+| orbit 81 | 10 | 40 | 77 GB | 28 GB | 8 GB | 8 GB |
+| orbit 110 | 9 | 23 | 58 GB | 13 GB | 4 GB | 4 GB |
+| total | | 107 | 267 GB | | 25 GB | 25 GB |
 
-- Disk peak: about 5.8 TB (raw + Cube + Filtered Cube, the pipeline deletes none of them), plus about 1 TB of stage work
-  folder for orbit 8 while it is built. Processed results: about 150-200 GB (scaled from 3.5 GB for Charente).
-  The data disk has 288 GB free. With #33 (compressed Cubes) the Cube side shrinks, the raw side does not.
-- RAM: bounded by `memory_budget_mb`, not by the data. Fixed part: 2 GDAL caches (2 GB at 16384) + the AOI mask of
-  one Series (1 B/px, 2.0 GB for orbit 8) = about 4 GB; the rest goes to chunks, so a budget of 12-16 GB works and
-  smaller chunks only cost time. The machine has 30 GB.
-- Download: about 690 slices x 2 assets, 1.46 TB over the network.
+- Peak disk, orbit by orbit with intermediates deleted (#39): raw of all three orbits + the float32 stack and Cube of
+  orbit 8 = about 324 GB. After the run: raw 267 GB + results. Results scale from 3.5 GB (Charente, 13 Mpx) to about 140 GB
+  if linear in polygon pixels (539 Mpx); not measured, probably less.
+- The data disk has 286 GB free: the run does not fit as it is. Options: delete each orbit's raw after its stack, or put
+  `data/` on another disk. Raw is 80% of the total; the Cubes are small now.
+- The disk scales with the number of dates. Series start 2025-12-01: 168 slices, 425 GB raw, 517 GB peak. Start
+  2025-11-01: 227 slices, 572 GB raw, 692 GB peak. Start 2025-09-01: 346 slices, 873 GB raw, 1,050 GB peak.
+- Download: 107 slices x 2 assets, 267 GB over the network.
 
-## Feasibility, first estimate (Series 2025-09-01 to 2026-03-30)
+**The Series start is too late for the detection.** Orbit 8 has 10 dates (first 2026-01-06) and `min_baseline` is 8, so the
+earliest candidate Event Start is the 9th date, 2026-02-23. On `charente-2026-02` (orbit 8, Series from 2025-09) the Event
+Start is 2026-01-06, with Before 2025-12-31, so this Series cannot find it and would report a later one. Orbit 110 has 9
+dates (one candidate), orbit 81 has 10. To reach that Event Start, orbit 8 needs 8 dates before 2025-12-31, so the Series
+must start on 2025-11-19 at the latest; 2025-11-01 (692 GB peak) leaves a margin. Not changed in the YAML: it was set to
+2026-01-01 on purpose (24 h before this estimate), probably for disk.
 
-- Slices to download: about 400 (8: ~154, 81: ~158, 110: ~85), x2 assets (vv, vh), about 800 files. Without #32 every
-  Series is stacked over the whole bbox, not only the chunks touching the polygon.
-- Grid: 390 x 565 km at 10 m is 2.2 Gpx per date. The whole-grid AOI mask (1 B/px) takes about 2.1 GB, so the default
-  `memory_budget_mb: 4096` leaves 1.4 GB for chunks; the event sets 16384 (not yet tried on a real run).
-- Uncompressed Cube: about 35 dates x 2 assets x 4 B x 2.2 Gpx = 600 GB per Series, 1.8 TB for three. This needs #33
-  (compressed Cube) and #32 before a full run is realistic.
+## Feasibility: RAM
+
+Bounded by `memory_budget_mb`, not by the data. Fixed part: 2 GDAL caches (2 GB at 16384) + the AOI mask of one Series
+(1 B/px, 2.0 GB for orbit 8: grid 2.1 Gpx; 81: 1.35 Gpx; 110: 1.0 Gpx) = about 4 GB; the rest goes to chunks, so a budget
+of 12-16 GB works and smaller chunks only cost time. The machine has 30 GB.
 
 ## int16 Cube and Filtered Cube, measured on `charente-2026-02` (#39)
 
