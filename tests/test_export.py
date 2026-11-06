@@ -89,6 +89,15 @@ def test_manifest_layer_roles_hints_and_attribution(config):
     assert "attribution" not in extent
 
 
+def test_before_and_after_layers_of_a_pair_share_range_colormap_and_bands(config):
+    layers = {l["slug"]: l for l in export.event_manifest(config, SUMMARY)["layers"]}
+    for before, after in (("s1-before", "s1-after"), ("s1-before-composite", "s1-after-composite")):
+        for key in ("rgb", "colormap"):
+            assert layers[before].get(key) == layers[after].get(key)
+    assert layers["s1-before-composite"]["rgb"] is not layers["s1-after-composite"]["rgb"]
+    assert layers["s1-before"]["colormap"]["range"] == layers["s1-before-composite"]["rgb"]["ranges"][0]
+
+
 def test_water_footprint_cog_is_uint8_nodata_255_with_nearest_overviews(tmp_path):
     src, dst = tmp_path / "src.tif", tmp_path / "out.tif"
     write_raster(src, mask(), "uint8", None)
