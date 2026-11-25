@@ -11,18 +11,21 @@ import sys
 from dataclasses import replace
 from types import ModuleType
 
-from flood_monitoring import composite, despeckle, download, event, export, flood_extent, merge_stage, stack
+from flood_monitoring import composite, despeckle, download, event, export, flood_extent, load, merge_stage, stack
 from flood_monitoring._env import ensure_clean_environment
 from flood_monitoring.config import EventConfig, load_event_config
 from flood_monitoring.paths import EventPaths, event_paths
 
 DEFAULT_EVENT = "saintes-2026-02"
 
-# In processing order. Stages up to "composite" run once per Series (relative orbit).
-PER_SERIES = ("download", "stack", "despeckle", "event", "flood-extent", "composite")
+# In processing order. Stages up to "composite" run once per Series (relative orbit). "load" builds the Cube from
+# the STAC COGs; "download" then "stack" build the same Cube from raw Subsets and are kept, out of the default run,
+# until the load is validated on Charente.
+PER_SERIES = ("download", "stack", "load", "despeckle", "event", "flood-extent", "composite")
 STAGES = {
     "download": download,
     "stack": stack,
+    "load": load,
     "despeckle": despeckle,
     "event": event,
     "flood-extent": flood_extent,
@@ -31,6 +34,9 @@ STAGES = {
     "export": export,
 }
 
+
+# What `run` runs without --stage.
+DEFAULT_RUN = [name for name in STAGES if name not in ("download", "stack")]
 
 # What a per-series stage consumes and what it produces: the consumed folder or file is deleted once the
 # produced one exists, unless --keep-intermediates.
@@ -42,6 +48,7 @@ INTERMEDIATES = {
 # The output that shows a stage is done, whether or not its input was deleted since.
 DONE = {
     "stack": lambda p: p.cube,
+    "load": lambda p: p.cube,
     "despeckle": lambda p: p.filtered_cube,
     "composite": lambda p: p.after_composite,  # committed last
 }
@@ -65,7 +72,7 @@ def _superseded(name: str, later: list[str], paths: EventPaths) -> bool:
 
     Its input is deleted by default, so running it again would only rebuild what the later stage no longer needs.
     """
-    return name in ("download", "stack", "despeckle") and any(n in DONE and DONE[n](paths).exists() for n in later)
+    return name in ("download", "stack", "load", "despeckle") and any(n in DONE and DONE[n](paths).exists() for n in later)
 
 
 def run_stages(
@@ -122,7 +129,10 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     rp = sub.add_parser("run", help="run the pipeline of an Event, skipping stages already done")
     rp.add_argument("event", nargs="?", default=DEFAULT_EVENT, help=f"Event slug (default {DEFAULT_EVENT})")
-    rp.add_argument("--stage", choices=list(STAGES), help="run this stage only")
+    rp.add_argument(
+        "--stage", choices=list(STAGES),
+        help=f"run this stage only (default: {', '.join(DEFAULT_RUN)}; download then stack replace load)",
+    )
     rp.add_argument("--force", action="store_true", help="redo stages whose output exists, download included")
     rp.add_argument(
         "--keep-intermediates", action="store_true",
@@ -143,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
         _show(config, paths)
         return 0
 
-    names = [a.stage] if a.stage else list(STAGES)
+    names = [a.stage] if a.stage else DEFAULT_RUN
     try:
         run_stages(config, paths, names, force=a.force, keep_intermediates=a.keep_intermediates)
     except (NotImplementedError, FileNotFoundError, RuntimeError, ValueError) as exc:

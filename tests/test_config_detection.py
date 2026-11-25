@@ -165,3 +165,12 @@ def test_missing_vector_file_is_rejected(tmp_path):
     text = BASE.replace("area_of_interest: [0, 0, 1, 1]", "area_of_interest: nope.gpkg")
     with pytest.raises(FileNotFoundError, match="nope.gpkg"):
         load_with_events(tmp_path, text)
+
+
+def test_processing_io_threads_is_read(tmp_path):
+    assert load(tmp_path, "processing:\n  io_threads: 16\n").processing.io_threads == 16
+
+
+def test_processing_rejects_non_positive_io_threads(tmp_path):
+    with pytest.raises(ValueError, match="io_threads must be a positive whole number"):
+        load(tmp_path, "processing:\n  io_threads: 0\n")

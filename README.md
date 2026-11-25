@@ -9,7 +9,7 @@ Open water reflects radar away, so flooded pixels turn dark. The pipeline downlo
 ```bash
 uv sync
 uv run flood-monitoring show saintes-2026-02             # config and resolved paths
-uv run flood-monitoring run saintes-2026-02              # download to export
+uv run flood-monitoring run saintes-2026-02              # load to export
 uv run flood-monitoring run saintes-2026-02 --stage event # one stage
 uv run flood-monitoring run saintes-2026-02 --force       # redo stages whose output exists
 uv run flood-monitoring run saintes-2026-02 --keep-intermediates  # keep raw/, cube.nc, filtered-cube.nc
@@ -20,7 +20,9 @@ Events are described in `events/<event>.yaml`. Data is kept outside the repo und
 
 ## Pipeline
 
-`download` → `stack` → `despeckle` → `event` → `flood-extent` → `composite` → `merge` (multi-orbit only) → `export`
+`load` → `despeckle` → `event` → `flood-extent` → `composite` → `merge` (multi-orbit only) → `export`
+
+`load` builds the Cube straight from the Sentinel-1 RTC COGs of the Planetary Computer (odc-stac): it reads only the chunks of the Area of Interest window and leaves no raw files. `download` then `stack` build the same Cube from raw Subsets; they are out of the default run and kept, through `--stage`, until `load` is validated on Charente.
 
 ## Documentation
 
@@ -38,6 +40,7 @@ processing:
   memory_budget_mb: 2048
 ```
 
+- `load` reads chunks of at least 512 px (the COG block side), at most 2 at a time (more only queue on a saturated link), with `processing.io_threads` COG reads per chunk in flight (default `8`, which reaches the plateau of a ~5 MB/s link, #42). It searches the Series per orbit, saves the Items as `interim/<event>/items.parquet` (stac-geoparquet), signs the URLs at each chunk read, so a run of many hours outlives the tokens, retries a failed chunk 3 times (10, 20, 40 s) before failing, and prints chunks done, MB received by the host, MB/s and the time left.
 - `stack` passes it to eo-pipe (`stack_tiles`), then converts the stacked float32 power to the Cube. `despeckle` plans its own chunks from it.
 - `event`, `flood-extent`, `composite` and `merge` read the Cube (or the warped Series rasters) in square spatial chunks, the whole time axis per chunk. Each prints `chunks: <side> px, <workers> at a time`. The side is planned from the budget, net of two GDAL block caches (rasterio's and the system GDAL's, `max(32, budget / 16)` MB each) and the whole-grid Area of Interest mask (1 byte per pixel), then shrunk to whole multiples (or divisors) of the Cube's stored chunks.
 - A budget too small for one 16 px chunk stops the stage with `memory_budget_mb=<value> is too small … set memory_budget_mb to at least <n>`.

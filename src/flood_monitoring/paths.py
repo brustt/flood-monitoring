@@ -50,6 +50,11 @@ class EventPaths:
         return self.interim / "cube.nc"
 
     @property
+    def items(self) -> Path:
+        """The Items the load stage built the Cube from, stac-geoparquet."""
+        return self.interim / "items.parquet"
+
+    @property
     def window(self) -> Path:
         """The Filtered Cube's window (``window``: chunks written, ``side``: chunk side in pixels), ``.npz``; only with a polygon."""
         return self.interim / "window.npz"

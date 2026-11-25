@@ -6,6 +6,7 @@ float32 dB with NaN for nodata. Only the speckle filters need linear power: they
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -33,12 +34,21 @@ def db_to_power(db: np.ndarray) -> np.ndarray:
     return np.power(np.float32(10), np.asarray(db, dtype="float32") / np.float32(10))
 
 
-def write_db_cube(ds: xr.Dataset, path: Path, window: np.ndarray | None, workers: int) -> int:
+def write_db_cube(
+    ds: xr.Dataset,
+    path: Path,
+    window: np.ndarray | None,
+    workers: int,
+    read: Callable[[slice, slice], list[np.ndarray]] | None = None,
+) -> int:
     """Write the dask-backed dB float32 *ds* (time, y, x) to *path* as int16, and return the number of chunks stored.
 
     The file is chunked like *ds*: its full time axis per spatial chunk. Only the chunks set in *window*, a boolean
     grid over the spatial chunks, are computed and stored; the others take no space and read back as nodata. ``None``
     stores every chunk. *workers* chunks are computed at a time. The file appears at *path* only once complete.
+
+    *read*, if given, returns the dB blocks of the chunk at (y slice, x slice), one per variable of *ds* in order;
+    *ds* is then only the template of the file and is never computed.
     """
     names = list(ds.data_vars)
     rows, cols = ds[names[0]].chunks[-2:]
@@ -67,7 +77,10 @@ def write_db_cube(ds: xr.Dataset, path: Path, window: np.ndarray | None, workers
             def write(cell: tuple[int, int]) -> None:
                 r, c = cell
                 sl = (slice(None), slice(r_off[r], r_off[r + 1]), slice(c_off[c], c_off[c + 1]))
-                blocks = dask.compute(*[ds[n].data[sl] for n in names], scheduler="synchronous")
+                if read is None:
+                    blocks = dask.compute(*[ds[n].data[sl] for n in names], scheduler="synchronous")
+                else:
+                    blocks = read(sl[1], sl[2])
                 with lock:
                     for name, block in zip(names, blocks):
                         nc[name][sl] = encode_db(block)

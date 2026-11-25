@@ -6,7 +6,7 @@ from flood_monitoring import cli
 from flood_monitoring.config import load_event_config
 from flood_monitoring.paths import EventPaths
 
-ORDER = ["download", "stack", "despeckle", "event", "flood-extent", "composite", "merge", "export"]
+ORDER = ["download", "stack", "load", "despeckle", "event", "flood-extent", "composite", "merge", "export"]
 
 
 def fake_stages(calls):
@@ -43,6 +43,13 @@ def add_subset(paths):
 
 def test_stage_order_has_merge_between_composite_and_export():
     assert list(cli.STAGES) == ORDER
+
+
+def test_run_builds_the_cube_with_load_not_download_and_stack(monkeypatch):
+    runs = []
+    monkeypatch.setattr(cli, "run_stages", lambda config, paths, names, **kw: runs.append(names))
+    assert cli.main(["run", "saintes-2026-02", "--force"]) == 0
+    assert runs == [[n for n in ORDER if n not in ("download", "stack")]]
 
 
 def test_runs_all_stages_in_order(paths, config):
@@ -107,7 +114,7 @@ def test_per_series_stages_run_for_every_orbit_and_merge_once(paths, config):
     assert paths.series_paths(110).processed.is_dir()
 
 
-PER_SERIES = ORDER[:6]
+PER_SERIES = ORDER[:7]
 
 
 def multi_orbit(config):
@@ -128,6 +135,7 @@ def producing_stages(calls):
     outputs = {
         "download": lambda p: [p.raw / "subset.tif"],
         "stack": lambda p: [p.cube],
+        "load": lambda p: [p.cube],
         "despeckle": lambda p: [p.filtered_cube],
         "composite": lambda p: [p.before_composite, p.after_composite],
     }
