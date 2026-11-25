@@ -52,6 +52,65 @@ dates (one candidate), orbit 81 has 10. To reach that Event Start, orbit 8 needs
 must start on 2025-11-19 at the latest; 2025-11-01 (692 GB peak) leaves a margin. Not changed in the YAML: it was set to
 2026-01-01 on purpose (24 h before this estimate), probably for disk.
 
+## Feasibility: network, odc-stac `load` against raw Subsets (#42)
+
+**Throughput** (`experiments/pc_throughput.py`, 2026-11-25, home link): 422 COG blocks of 512 px (vv and vh of 16 orbit 8
+slices, inside the footprint and touching the AOI, 359 MB, 851 kB per block, from 833 to 866 kB), one COG open per block
+as odc-stac does per chunk read, each concurrency in a fresh process. MB/s counts the block bytes only. GDAL settings of
+`prototypes/odc_stac_cube.py` plus `GDAL_HTTP_MULTIPLEX=YES` and `GDAL_HTTP_VERSION=2`.
+
+| Concurrent reads | 1 | 4 | 8 | 16 | 32 | 1 again | curl, 1 stream, 200 MB |
+|---|---|---|---|---|---|---|---|
+| MB/s | 2.78 | 4.76 | 5.05 | 5.00 | 5.24 | 2.81 | 5.51, then 5.37 |
+
+- The link is the limit, about 5 MB/s (40 Mbit/s): one plain stream already reaches it, and 8 or more parallel reads
+  reach the same. A first, smaller run (58 blocks) gave the same figures.
+- One read at a time gets half of it: each block is a COG open plus a range request, so the latency is not hidden.
+  The 1.4 MB/s of the prototype on Saintes was not the link: `write_db_cube` reads a chunk's dates one after another.
+- Azure Blob answers in HTTP/1.1 only (curl negotiates 1.1, prior-knowledge HTTP/2 fails), so the multiplexing
+  settings do nothing; the parallelism has to come from threads.
+- The second level-1 run matches the first, so the server does not cache the blocks between runs.
+
+**Bytes to fetch** (`experiments/estimate_disk.py`): COG blocks of each slice, counted on its 512 px block grid, data
+blocks only (touching the footprint). Raw Subsets read the blocks overlapping the AOI bbox. odc-stac reads, per 512 px
+chunk of `aoi.chunk_window` (margin 6 px, Lee + Quegan), the blocks that the chunk overlaps, on the grid of the polygon
+bounds in the orbit's main UTM zone (32631 for 8 and 110, 32630 for 81). The window holds 3,080 (3,095 for 81) of 9,462 chunks (33%).
+GB = blocks x 2 assets x 851 kB.
+
+| Series start | Orbit | Slices | Raw Subsets: blocks, GB | odc-stac unique blocks, GB | odc-stac fetches, GB |
+|---|---|---|---|---|---|
+| 2026-01-01 | 8 | 44 | 59,149, 101 GB | 31,260, 53 GB | 101,012, 172 GB |
+| | 81 | 40 | 37,280, 63 GB | 15,960, 27 GB | 51,787, 88 GB |
+| | 110 | 23 | 25,554, 43 GB | 9,946, 17 GB | 31,995, 54 GB |
+| | total | 107 | 207 GB | 97 GB | 314 GB |
+| 2025-11-01 | 8 | 94 | 126,145, 215 GB | 66,617, 113 GB | 215,880, 367 GB |
+| | 81 | 85 | 81,434, 139 GB | 35,799, 61 GB | 116,608, 198 GB |
+| | 110 | 48 | 53,446, 91 GB | 20,997, 36 GB | 67,539, 115 GB |
+| | total | 227 | 445 GB | 210 GB | 680 GB |
+
+- The window halves the blocks: odc-stac needs 47% of the blocks of the raw Subsets (39% to 53% by orbit).
+- But the slice grids are not aligned with the chunks (each frame has its own origin, and 10 of the 44 orbit 8 slices
+  are in zone 30), so a 512 px chunk overlaps about 4 blocks and each block is read by about 3.2 chunks. Each chunk read
+  opens the COG anew, and GDAL's curl cache (16 MB per process, `CPL_VSIL_CURL_CACHE_SIZE`) holds about 19 blocks while one
+  chunk reads about 80 (10 dates x 2 assets x 4), so the "fetches" column, without any cache hit, is what the prototype
+  would download as it is. Not measured on a real run.
+- Raw Subsets on the network (207 GB) are less than on disk (267 GB, 9.4 B/px): the COGs are 6.5 B/px for vv + vh.
+- The block size is that of full data blocks; edge blocks with nodata are smaller, so all GB figures are a little high.
+
+**Estimated `load` wall time** at 5.0 MB/s (bytes / throughput, 8 or more parallel reads):
+
+| Series start | Orbit | Raw Subsets download | odc-stac, no refetch | odc-stac, as it is |
+|---|---|---|---|---|
+| 2026-01-01 | 8 / 81 / 110 | 5.6 / 3.5 / 2.4 h | 2.9 / 1.5 / 0.9 h | 9.6 / 4.9 / 3.0 h |
+| | Event | 11.5 h | 5.4 h | 17 h |
+| 2025-11-01 | 8 / 81 / 110 | 12 / 7.7 / 5.1 h | 6.3 / 3.4 / 2.0 h | 20 / 11 / 6.4 h |
+| | Event | 25 h | 12 h | 38 h |
+
+**Conclusion: hours per orbit, not days, as long as each block is fetched once** (12 h for the whole Event with the
+2025-11-01 start `min_baseline` needs). Without that, odc-stac downloads more than the raw Subsets (38 h). The ways to
+fetch each block once (chunks larger than 512 px, a larger curl cache with chunks read in order, or caching the blocks)
+are not tested. At this link the parallelism only needs to be about 8 reads; more does not help.
+
 ## Feasibility: RAM
 
 Bounded by `memory_budget_mb`, not by the data. Fixed part: 2 GDAL caches (2 GB at 16384) + the AOI mask of one Series

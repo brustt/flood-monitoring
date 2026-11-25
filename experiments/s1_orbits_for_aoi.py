@@ -28,6 +28,11 @@ def search(aoi_wgs84) -> list[dict]:
     return items
 
 
+def crs_of(item: dict) -> str:
+    props = item["properties"]  # older items carry proj:epsg instead of proj:code
+    return props["proj:code"] if "proj:code" in props else f"EPSG:{props['proj:epsg']}"
+
+
 def main() -> None:
     aoi_gdf = gpd.read_file(AOI)
     aoi = aoi_gdf.to_crs(METRIC_CRS).geometry.iloc[0]
