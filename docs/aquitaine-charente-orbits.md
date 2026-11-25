@@ -116,11 +116,20 @@ if no curl cache hit at all). The ways to
 fetch each block once (chunks larger than 512 px, a larger curl cache with chunks read in order, or caching the blocks)
 are not tested. At this link the parallelism only needs to be about 8 reads; more does not help.
 
+**From the OVH VPS** (`experiments/pc_speed.sh`, whole-file downloads, 2026-11-25): 42.2 MB/s on one stream, 48.6 MB/s
+on 8, about 9x the home link (5.2 / 4.8 MB/s with the same script); probably the VPS plan's cap (~400 Mbit/s). Ranged
+512 px block reads were not measured there. If they reach the same rate, every time above is about 9x shorter (1.3 h
+for the whole Event with the 2025-11-01 start, no refetch), and the ~25 GB of Cubes take about 1.4 h to copy home at
+5 MB/s. `load` runs on the light install for that ([install](install.md), #43).
+
 ## Feasibility: RAM
 
 Bounded by `memory_budget_mb`, not by the data. Fixed part: 2 GDAL caches (2 GB at 16384) + the AOI mask of one Series
 (1 B/px, 2.0 GB for orbit 8: grid 2.1 Gpx; 81: 1.35 Gpx; 110: 1.0 Gpx) = about 4 GB; the rest goes to chunks, so a budget
 of 12-16 GB works and smaller chunks only cost time. The machine has 30 GB.
+
+On the VPS (8 GB, shared with the Platform), `load` needs a budget of about 3 GB: the Event YAML's 16384 is for the
+home machine. `load` holds at most 2 chunks of 512 px or more at once.
 
 ## int16 Cube and Filtered Cube, measured on `charente-2026-02` (#39)
 
@@ -159,6 +168,6 @@ Writing the dB conversion inside eo-pipe's `stack_tiles` would remove it.
 Per-orbit loop in the CLI, merge stage, Orbit Map and Event summary already exist, and the config accepts
 `relative_orbit: [..]`. Remaining:
 
-1. `download.run` raises `NotImplementedError` for several orbits when called directly; only the CLI loop works around it (#23).
-2. Whole-grid AOI mask and Cube size at 2.2 Gpx (see above): #32, #33.
+1. `download.run` raises `NotImplementedError` for several orbits when called directly; only the CLI loop works around it (#23). `load`, the default, builds each orbit's Cube in the same loop.
+2. Cube size at 2.2 Gpx: done (#32 AOI window, #33 compression, #39 int16), measured above. The whole-grid AOI mask (1 B/px) is still held in memory per Series.
 3. No end-to-end run of a three-orbit Event yet, so the merge on a real overlap strip is untested (ADR 0001 fallback for false positives).
