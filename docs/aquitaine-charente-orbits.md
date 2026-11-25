@@ -54,10 +54,10 @@ must start on 2025-11-19 at the latest; 2025-11-01 (692 GB peak) leaves a margin
 
 ## Feasibility: network, odc-stac `load` against raw Subsets (#42)
 
-**Throughput** (`experiments/pc_throughput.py`, 2026-11-25, home link): 422 COG blocks of 512 px (vv and vh of 16 orbit 8
+**Throughput** (`experiments/pc_throughput.py --items 16 --blocks 16`, 2026-11-25, home link): 422 COG blocks of 512 px (vv and vh of 16 orbit 8
 slices, inside the footprint and touching the AOI, 359 MB, 851 kB per block, from 833 to 866 kB), one COG open per block
 as odc-stac does per chunk read, each concurrency in a fresh process. MB/s counts the block bytes only. GDAL settings of
-`prototypes/odc_stac_cube.py` plus `GDAL_HTTP_MULTIPLEX=YES` and `GDAL_HTTP_VERSION=2`.
+`prototypes/odc_stac_cube.py` (branch `worktree-odc-stac-saintes-prototype`) plus `GDAL_HTTP_MULTIPLEX=YES` and `GDAL_HTTP_VERSION=2`.
 
 | Concurrent reads | 1 | 4 | 8 | 16 | 32 | 1 again | curl, 1 stream, 200 MB |
 |---|---|---|---|---|---|---|---|
@@ -66,8 +66,11 @@ as odc-stac does per chunk read, each concurrency in a fresh process. MB/s count
 - The link is the limit, about 5 MB/s (40 Mbit/s): one plain stream already reaches it, and 8 or more parallel reads
   reach the same. A first, smaller run (58 blocks) gave the same figures.
 - One read at a time gets half of it: each block is a COG open plus a range request, so the latency is not hidden.
-  The 1.4 MB/s of the prototype on Saintes was not the link: `write_db_cube` reads a chunk's dates one after another.
-- Azure Blob answers in HTTP/1.1 only (curl negotiates 1.1, prior-knowledge HTTP/2 fails), so the multiplexing
+  The 1.4 MB/s of the prototype on Saintes was not the link alone: `write_db_cube` reads a chunk's dates one after
+  another, which explains 2.8 MB/s at most; the rest (refetched blocks, the dB conversion and writes, the link on that
+  day) is not measured.
+- Azure Blob answers in HTTP/1.1 only (checked by hand: `curl --http2` negotiates 1.1, `--http2-prior-knowledge`
+  fails), so the multiplexing
   settings do nothing; the parallelism has to come from threads.
 - The second level-1 run matches the first, so the server does not cache the blocks between runs.
 
@@ -97,17 +100,19 @@ GB = blocks x 2 assets x 851 kB.
 - Raw Subsets on the network (207 GB) are less than on disk (267 GB, 9.4 B/px): the COGs are 6.5 B/px for vv + vh.
 - The block size is that of full data blocks; edge blocks with nodata are smaller, so all GB figures are a little high.
 
-**Estimated `load` wall time** at 5.0 MB/s (bytes / throughput, 8 or more parallel reads):
+**Estimated `load` wall time** at 5.0 MB/s (bytes / throughput: the plateau of 8 or more parallel reads; the best
+single figure, 5.24 MB/s at 32, makes every time 5% shorter):
 
 | Series start | Orbit | Raw Subsets download | odc-stac, no refetch | odc-stac, as it is |
 |---|---|---|---|---|
 | 2026-01-01 | 8 / 81 / 110 | 5.6 / 3.5 / 2.4 h | 2.9 / 1.5 / 0.9 h | 9.6 / 4.9 / 3.0 h |
 | | Event | 11.5 h | 5.4 h | 17 h |
 | 2025-11-01 | 8 / 81 / 110 | 12 / 7.7 / 5.1 h | 6.3 / 3.4 / 2.0 h | 20 / 11 / 6.4 h |
-| | Event | 25 h | 12 h | 38 h |
+| | Event | 25 h | 12 h | 38 h, at most |
 
 **Conclusion: hours per orbit, not days, as long as each block is fetched once** (12 h for the whole Event with the
-2025-11-01 start `min_baseline` needs). Without that, odc-stac downloads more than the raw Subsets (38 h). The ways to
+2025-11-01 start `min_baseline` needs). Without that, odc-stac downloads more than the raw Subsets (up to 38 h,
+if no curl cache hit at all). The ways to
 fetch each block once (chunks larger than 512 px, a larger curl cache with chunks read in order, or caching the blocks)
 are not tested. At this link the parallelism only needs to be about 8 reads; more does not help.
 

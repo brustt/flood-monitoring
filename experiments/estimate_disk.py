@@ -1,4 +1,5 @@
-"""Estimate the disk a Series needs, per relative orbit, from the STAC footprints and the AOI polygon.
+"""Estimate the disk a Series needs, and the COG bytes it fetches, per relative orbit, from the STAC footprints and
+the AOI polygon.
 
 Sizes follow what the pipeline stores (measured on charente-2026-02, issue #39):
   raw       Subsets are the slice cut to the AOI bbox (measured: the blocks outside the polygon are not skipped):

@@ -39,7 +39,7 @@ GDAL_ENV = {
 }
 
 
-def data_blocks(item: dict, aoi: gpd.GeoSeries) -> list[tuple[int, int]]:
+def inner_blocks(item: dict, aoi: gpd.GeoSeries) -> list[tuple[int, int]]:
     """(row, col) of the item's blocks that lie inside its footprint and touch the AOI."""
     crs = crs_of(item)
     footprint = gpd.GeoSeries([shape(item["geometry"])], crs="EPSG:4326").to_crs(crs).iloc[0]
@@ -63,7 +63,7 @@ def plan(n_items: int, n_blocks: int) -> list[tuple[str, int, int, int]]:
     rng = np.random.default_rng(0)
     out = []
     for item in items[:: max(1, len(items) // n_items)][:n_items]:
-        blocks = data_blocks(item, aoi)
+        blocks = inner_blocks(item, aoi)
         picks = [blocks[i] for i in rng.choice(len(blocks), min(n_blocks, len(blocks)), replace=False)]
         for asset in ("vv", "vh"):
             href = planetary_computer.sign(item["assets"][asset]["href"])
