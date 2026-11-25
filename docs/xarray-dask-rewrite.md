@@ -1,5 +1,7 @@
 # Design: processing steps on xarray and dask, bounded memory (#26)
 
+> **Historical design.** Implemented in October 2026; the code has moved on since. Not current: the stages no longer pass `memory_budget_mb` to eo-pipe's `stack_tiles`, `lee_filter` and `quegan_filter` (`despeckle` runs eo-pipe's kernels per chunk itself, the Cube is int16 dB with an AOI window, `load` replaces `download` + `stack`). See [overview](overview.md) and [ingest](pipeline/1-ingest.md) for the current pipeline.
+
 Status: design, revision 5 (pipeline review: `to_db_lazy` keeps the CRS, chunk side aligned to the Cube's stored chunks, uint8 merge encodings, manual checks added; revision 4 — review fixes: merge AOI local renamed, both GDAL caches and the AOI mask reserved from the budget, budget error quotes the configured value, batched Event Start with early stop, whole-grid AOI mask, sieve transform). Base: `main` at `ec7d84f` (the #23 multi-orbit code — `merge.py`, `merge_stage.py`, per-orbit `EventPaths`, ADR 0001 — and the CLI re-exec fix, merged via #27). Every file and function named below is as on that base.
 
 ## Why

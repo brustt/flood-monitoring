@@ -28,7 +28,7 @@ Events are described in `events/<event>.yaml`. Data is kept outside the repo und
 
 - [`docs/install.md`](docs/install.md): full install, and the light install that runs `load` on another machine (the VPS).
 - [`docs/overview.md`](docs/overview.md): the workflow, configuration, skip/resume rules, file layout.
-- Stage by stage: [ingest](docs/pipeline/1-ingest.md) (download, stack, despeckle), [detection](docs/pipeline/2-detection.md) (event, flood-extent), [composite](docs/pipeline/3-composite.md), [merge](docs/pipeline/4-merge.md), [export](docs/pipeline/5-export.md).
+- Stage by stage: [ingest](docs/pipeline/1-ingest.md) (load, despeckle; download and stack), [detection](docs/pipeline/2-detection.md) (event, flood-extent), [composite](docs/pipeline/3-composite.md), [merge](docs/pipeline/4-merge.md), [export](docs/pipeline/5-export.md).
 - [`CONTEXT.md`](CONTEXT.md): glossary (Event, Series, Cube, Baseline, Drop, Flood Extent…).
 - [`docs/detection-rules.md`](docs/detection-rules.md) and [`docs/adr/`](docs/adr/): why the rules and the multi-orbit design are what they are.
 

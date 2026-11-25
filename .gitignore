@@ -18,5 +18,7 @@ CONTEXT.md
 .claude/*
 experiments/*
 docs/*
+!docs/overview.md
+!docs/pipeline/
 scripts/flush_event.py
 experiments/extract_charente_buffer.py
