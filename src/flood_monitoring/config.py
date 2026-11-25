@@ -85,6 +85,7 @@ class Processing:
     """Memory budget of every stage after download; sets the chunk size and GDAL cache (see chunks.py)."""
 
     memory_budget_mb: float = 4096.0
+    io_threads: int = 8  # load stage: COG reads of one chunk in flight at once (8 reach the link's plateau, #42)
 
 
 @dataclass(frozen=True)
@@ -182,7 +183,10 @@ def _processing(raw: dict, path: Path) -> Processing:
         raise ValueError(f"{path}: processing memory_budget_mb must be positive")
     if not math.isfinite(budget):
         raise ValueError(f"{path}: processing memory_budget_mb must be finite")
-    return Processing(memory_budget_mb=budget)
+    io_threads = raw.get("io_threads", Processing.io_threads)
+    if isinstance(io_threads, bool) or not isinstance(io_threads, int) or io_threads < 1:
+        raise ValueError(f"{path}: processing io_threads must be a positive whole number")
+    return Processing(memory_budget_mb=budget, io_threads=io_threads)
 
 
 def _area_of_interest(raw, path: Path, base: Path):

@@ -49,15 +49,19 @@ def _union_grid(inputs: list[Path]) -> tuple[rasterio.crs.CRS, Affine, tuple[int
 BYTES_PER_DATE_VAR = 8
 
 
+def halo_margin(config: EventConfig) -> int:
+    """Pixels around the polygon the Cube's window keeps: the halo of the speckle filters (Lee then Quegan), so no
+    filtered pixel of the polygon reads a skipped chunk."""
+    settings = config.despeckle
+    return max(1, settings.lee_window // 2 + settings.quegan_window // 2)
+
+
 def _window_params(config: EventConfig, paths: EventPaths, inputs: list[Path]) -> dict:
     """``chunk_side`` and ``window`` for stack_tiles; the window is also saved next to the Cube."""
     crs, transform, shape, _ = _union_grid(inputs)
     dates = len({p.parent.parent.name for p in inputs})
     side = chunks.plan(config.processing.memory_budget_mb, BYTES_PER_DATE_VAR * len(config.series.assets) * dates, *shape).side
-    # the margin covers the halo of the speckle filters (Lee then Quegan), so no filtered pixel of the polygon reads a skipped chunk
-    settings = config.despeckle
-    margin = max(1, settings.lee_window // 2 + settings.quegan_window // 2)
-    window = aoi.chunk_window(config.aoi_polygon, crs, transform, shape, side, margin)
+    window = aoi.chunk_window(config.aoi_polygon, crs, transform, shape, side, halo_margin(config))
     paths.interim.mkdir(parents=True, exist_ok=True)
     paths.window.unlink(missing_ok=True)
     np.savez(paths.window, window=window, side=side)
