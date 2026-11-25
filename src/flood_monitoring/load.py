@@ -1,4 +1,4 @@
-"""Build the Cube straight from the STAC COGs with odc-stac: no raw Subsets, no float32 stack.
+"""Build the Cube straight from the STAC COGs with odc-stac: no raw Subsets, no float32 Tile stack.
 
 Writes the same Cube as the stack stage (``paths.cube``, int16 dB, the chunks of the Area of Interest window). Each
 chunk is read on its own: one odc-stac load of that chunk's grid, with its dates fetched by ``io_threads`` threads,
@@ -10,6 +10,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import Counter
+from collections.abc import Callable
 
 import dask.array as da
 import numpy as np
@@ -85,7 +86,7 @@ def acquisition_starts(items: list[pystac.Item], times: np.ndarray) -> np.ndarra
     return starts.astype("datetime64[ns]")
 
 
-def as_raster_data(items: list[pystac.Item], assets: list[str]) -> list[pystac.Item]:
+def without_overview_role(items: list[pystac.Item], assets: list[str]) -> list[pystac.Item]:
     """*items* with the "overview" role dropped from *assets*: the Planetary Computer gives it to the full-resolution
     vh COG, and odc-stac then leaves vh out of the bands it can load."""
     items = [item.clone() for item in items]
@@ -135,17 +136,17 @@ class _Progress:
               f"{elapsed / 60:.1f} min, {left / 60:.1f} min left", flush=True)
 
 
-def _with_retries(read, y: slice, x: slice):
+def _with_retries(read: Callable[[slice, slice], list[np.ndarray]], y: slice, x: slice) -> list[np.ndarray]:
+    """``read(y, x)``, tried again RETRIES times after RETRY_DELAY_S, doubled each time; the last failure raises."""
+    where = f"chunk at rows {y.start}:{y.stop}, columns {x.start}:{x.stop}"
     for attempt in range(RETRIES + 1):
         try:
             return read(y, x)
         except Exception as exc:  # any read error: HTTP, an expired signature, GDAL
             if attempt == RETRIES:
-                raise RuntimeError(f"chunk at rows {y.start}:{y.stop}, columns {x.start}:{x.stop} failed "
-                                   f"{RETRIES + 1} times: {exc}") from exc
+                raise RuntimeError(f"{where} failed {RETRIES + 1} times: {exc}") from exc
             delay = RETRY_DELAY_S * 2**attempt
-            print(f"load: chunk at rows {y.start}:{y.stop}, columns {x.start}:{x.stop} failed ({exc}); "
-                  f"retry {attempt + 1}/{RETRIES} in {delay:.0f} s", flush=True)
+            print(f"load: {where} failed ({exc}); retry {attempt + 1}/{RETRIES} in {delay:.0f} s", flush=True)
             time.sleep(delay)
 
 
@@ -160,16 +161,16 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
     to_parquet(parse_stac_items_to_arrow(items), paths.items)
 
     assets = list(config.series.assets)
-    items = as_raster_data(items, assets)
+    items = without_overview_role(items, assets)
     budget = config.processing.memory_budget_mb
     load_args = dict(bands=assets, groupby="solar_day", fail_on_error=True)
     # No pixel is read here: the grid and the dates only. The S1 RTC transforms sit on multiples of 10 m, which
     # odc-stac snaps the bbox to, so the grid is the native lattice.
-    lazy = odc.stac.load(items, crs=_crs(items), resolution=RESOLUTION, bbox=config.area_of_interest, chunks={},
-                         **load_args)
-    times, (height, width) = acquisition_starts(items, lazy["time"].values), lazy.odc.geobox.shape
-    geobox = lazy.odc.geobox
-    print(f"{len(items)} items, {len(times)} Acquisitions, {height} x {width} px, {_crs(items)}")
+    crs = _crs(items)
+    lazy = odc.stac.load(items, crs=crs, resolution=RESOLUTION, bbox=config.area_of_interest, chunks={}, **load_args)
+    geobox, times = lazy.odc.geobox, acquisition_starts(items, lazy["time"].values)
+    height, width = geobox.shape
+    print(f"{len(items)} items, {len(times)} Acquisitions, {height} x {width} px, {crs}")
 
     bytes_per_pixel = BYTES_PER_DATE_VAR * len(assets) * len(times)
     side = max(chunks.plan(budget, bytes_per_pixel, height, width, stored=COG_BLOCK).side, COG_BLOCK)
@@ -194,7 +195,8 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
         return [to_db(ds[a].values) for a in assets]
 
     template = _template(lazy, assets, times, side)
-    progress = _Progress(int(window.sum()) if window is not None else len(template.chunks["y"]) * len(template.chunks["x"]))
+    grid = len(template.chunks["y"]) * len(template.chunks["x"])
+    progress = _Progress(grid if window is None else int(window.sum()))
 
     def read_chunk(y: slice, x: slice) -> list[np.ndarray]:
         blocks = _with_retries(read, y, x)
@@ -204,7 +206,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
     odc.stac.configure_rio(cloud_defaults=True, **GDAL_ENV)  # applied in each reading thread
     with chunks.scheduler(workers, budget):
         stored = write_db_cube(template, paths.cube, window, workers, read=read_chunk)
-    print(f"cube: {stored}/{progress.total if window is None else window.size} chunks stored, "
+    print(f"cube: {stored}/{grid} chunks stored, "
           f"{paths.cube.stat().st_size / 2**30:.2f} GB")
 
     ds, plan = chunks.open_cube(paths.cube, budget, bytes_per_date=10)
