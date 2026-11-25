@@ -6,12 +6,12 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import shutil
 import sys
 from dataclasses import replace
 from types import ModuleType
 
-from flood_monitoring import composite, despeckle, download, event, export, flood_extent, load, merge_stage, stack
 from flood_monitoring._env import ensure_clean_environment
 from flood_monitoring.config import EventConfig, load_event_config
 from flood_monitoring.paths import EventPaths, event_paths
@@ -22,17 +22,33 @@ DEFAULT_EVENT = "saintes-2026-02"
 # the STAC COGs; "download" then "stack" build the same Cube from raw Subsets and are kept, out of the default run,
 # until the load is validated on Charente.
 PER_SERIES = ("download", "stack", "load", "despeckle", "event", "flood-extent", "composite")
+# Stage name -> module of flood_monitoring, imported only when the stage runs: the light install (#43) has what the
+# load stage needs and nothing of the full install's packages, which the other stages import.
 STAGES = {
-    "download": download,
-    "stack": stack,
-    "load": load,
-    "despeckle": despeckle,
-    "event": event,
-    "flood-extent": flood_extent,
-    "composite": composite,
-    "merge": merge_stage,
-    "export": export,
+    "download": "download",
+    "stack": "stack",
+    "load": "load",
+    "despeckle": "despeckle",
+    "event": "event",
+    "flood-extent": "flood_extent",
+    "composite": "composite",
+    "merge": "merge_stage",
+    "export": "export",
 }
+FULL_INSTALL = ("eo_pipe", "eo_stac", "osgeo", "platform_publish")
+
+
+def _stage(name: str) -> ModuleType:
+    """The module of stage *name*; a stage needing the full install says so on the light one."""
+    try:
+        return importlib.import_module(f"flood_monitoring.{STAGES[name]}")
+    except ModuleNotFoundError as exc:
+        if (exc.name or "").split(".")[0] not in FULL_INSTALL:
+            raise
+        raise RuntimeError(
+            f"the {name} stage needs the full install ({exc.name} is missing): run `uv sync` without "
+            "`--no-group full`; the light install runs the load stage only"
+        ) from exc
 
 
 # What `run` runs without --stage.
@@ -91,7 +107,7 @@ def run_stages(
     raw Subsets, the Cube and the Filtered Cube are deleted once the next stage has produced its result, unless
     *keep_intermediates*.
     """
-    stages = stages or STAGES
+    stage = stages.__getitem__ if stages is not None else _stage
     orbits = config.series.relative_orbits
     # A single orbit keeps the flat folders: its results already are the global Layers.
     series_paths = [paths] if len(orbits) == 1 else [paths.series_paths(o) for o in orbits]
@@ -102,7 +118,7 @@ def run_stages(
     while i < len(names):
         if names[i] not in PER_SERIES:
             print(f"[{names[i]}]")
-            stages[names[i]].run(config, paths, force=force)
+            stage(names[i]).run(config, paths, force=force)
             i += 1
             continue
         j = i
@@ -117,7 +133,7 @@ def run_stages(
                     print(f"{label} skip: a later stage is done")
                     continue
                 print(label)
-                stages[name].run(series_config, p, force=force)
+                stage(name).run(series_config, p, force=force)
                 if not keep_intermediates:
                     _release(name, p)
         i = j

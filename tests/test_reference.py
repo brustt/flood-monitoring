@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from eo_pipe.io.memory import ChunkPlan
+from flood_monitoring.chunks import ChunkPlan
 from rasterio.crs import CRS
 
 import reference_inputs as ri

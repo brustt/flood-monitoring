@@ -20,17 +20,14 @@ import psutil
 import pystac
 import pystac_client
 import xarray as xr
-from eo_pipe.io.memory import workers_for
 from shapely.geometry import mapping
 from stac_geoparquet.arrow import parse_stac_items_to_arrow, to_parquet
 
 from . import aoi, chunks
-from .config import EventConfig
-from .cube import check_cube, write_db_cube
+from .config import STAC_API, EventConfig, halo_margin
+from .cube import BYTES_PER_DATE_VAR, check_cube, write_db_cube
 from .detection import to_db
-from .download import STAC_API
 from .paths import EventPaths
-from .stack import BYTES_PER_DATE_VAR, halo_margin
 
 COG_BLOCK = 512  # block side of the sentinel-1-rtc COGs: a smaller chunk fetches each block several times
 RESOLUTION = 10.0  # metres, the native pixel of the RTC COGs
@@ -174,7 +171,7 @@ def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:
 
     bytes_per_pixel = BYTES_PER_DATE_VAR * len(assets) * len(times)
     side = max(chunks.plan(budget, bytes_per_pixel, height, width, stored=COG_BLOCK).side, COG_BLOCK)
-    workers = min(workers_for(budget - chunks.reserved_mb(budget, height, width), bytes_per_pixel, side),
+    workers = min(chunks.workers_for(budget - chunks.reserved_mb(budget, height, width), bytes_per_pixel, side),
                   CHUNKS_IN_FLIGHT)
     print(f"chunks: {side} px, {workers} at a time, {config.processing.io_threads} reads each")
 

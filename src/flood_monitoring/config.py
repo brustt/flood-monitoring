@@ -12,6 +12,7 @@ from shapely.geometry import MultiPolygon, Polygon
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EVENTS_DIR = REPO_ROOT / "events"
+STAC_API = "https://planetarycomputer.microsoft.com/api/stac/v1"
 
 
 @dataclass(frozen=True)
@@ -255,3 +256,10 @@ def _composite_ranges(raw: dict, path: Path) -> CompositeRanges:
             raise ValueError(f"{path}: composite {name} range must be [low, high] with low < high")
         ranges[name] = (low, high)
     return CompositeRanges(**ranges)
+
+
+def halo_margin(config: EventConfig) -> int:
+    """Pixels around the polygon the Cube's window keeps: the halo of the speckle filters (Lee then Quegan), so no
+    filtered pixel of the polygon reads a skipped chunk."""
+    settings = config.despeckle
+    return max(1, settings.lee_window // 2 + settings.quegan_window // 2)

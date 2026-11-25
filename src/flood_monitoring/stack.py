@@ -9,13 +9,12 @@ from pathlib import Path
 import numpy as np
 import rasterio
 import xarray as xr
-from eo_pipe.io.memory import workers_for
 from eo_pipe.pipeline import MergeBatch, PipelineComposition
 from rasterio.transform import Affine
 
 from . import aoi, chunks
-from .config import EventConfig, Series
-from .cube import check_cube, write_db_cube
+from .config import EventConfig, Series, halo_margin
+from .cube import BYTES_PER_DATE_VAR, check_cube, write_db_cube
 from .detection import to_db
 from .paths import EventPaths
 
@@ -44,18 +43,6 @@ def _union_grid(inputs: list[Path]) -> tuple[rasterio.crs.CRS, Affine, tuple[int
     return crs, transform, (round((top - bottom) / res[1]), round((right - left) / res[0])), itemsize
 
 
-# Converting to dB holds, per pixel and date and variable, the power, the dB and their working copies: 8 B, twice
-# the stack's own. Chunks are planned for it once, so one chunk side serves both.
-BYTES_PER_DATE_VAR = 8
-
-
-def halo_margin(config: EventConfig) -> int:
-    """Pixels around the polygon the Cube's window keeps: the halo of the speckle filters (Lee then Quegan), so no
-    filtered pixel of the polygon reads a skipped chunk."""
-    settings = config.despeckle
-    return max(1, settings.lee_window // 2 + settings.quegan_window // 2)
-
-
 def _window_params(config: EventConfig, paths: EventPaths, inputs: list[Path]) -> dict:
     """``chunk_side`` and ``window`` for stack_tiles; the window is also saved next to the Cube."""
     crs, transform, shape, _ = _union_grid(inputs)
@@ -76,7 +63,7 @@ def _write_cube(built: Path, dst: Path, window_params: dict, budget: float) -> t
         with xr.open_dataset(built) as meta:
             dates, height, width = meta.sizes["time"], meta.sizes["y"], meta.sizes["x"]
             variables = len(meta.data_vars)
-        workers = workers_for(budget - chunks.reserved_mb(budget, height, width), BYTES_PER_DATE_VAR * variables * dates, side)
+        workers = chunks.workers_for(budget - chunks.reserved_mb(budget, height, width), BYTES_PER_DATE_VAR * variables * dates, side)
         ds = xr.open_dataset(built, chunks={"time": -1, "y": side, "x": side})
     else:
         window = None

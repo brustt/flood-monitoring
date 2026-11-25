@@ -5,10 +5,8 @@ from __future__ import annotations
 import planetary_computer
 from eo_stac import Sentinel1Params, STACSource, download_items, search_items
 
-from .config import EventConfig
+from .config import STAC_API, EventConfig
 from .paths import EventPaths
-
-STAC_API = "https://planetarycomputer.microsoft.com/api/stac/v1"
 
 
 def run(config: EventConfig, paths: EventPaths, force: bool = False) -> None:

@@ -178,7 +178,7 @@ def test_killed_forced_merge_is_redone(setup, monkeypatch, capsys):
 
 def test_large_merge_is_chunk_independent(tmp_path, monkeypatch):
     import reference_inputs as ri
-    from eo_pipe.io.memory import ChunkPlan
+    from flood_monitoring.chunks import ChunkPlan
 
     from flood_monitoring import chunks
 

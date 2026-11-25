@@ -7,23 +7,38 @@ authors = [
     { name = "brustt", email = "martin.dzr@protonmail.com" }
 ]
 requires-python = ">=3.12"
+# The light install: wheels only, enough for the load stage (#43), e.g. on the VPS with
+# `uv sync --frozen --no-dev --no-group full`. The other stages need the `full` group below.
 dependencies = [
-    "eo-pipe",
-    "eo-stac",
+    "dask>=2026.8.0",
     "geopandas",
-    "shapely",
-    "platform-publish",
-    "pyyaml>=6.0",
+    "netcdf4>=1.7.4",
+    "numpy>=2.5.4",
     "odc-stac>=0.5.3",
-    "pystac-client>=0.9.0",
-    "stac-geoparquet>=0.9.0",
+    "planetary-computer>=1.0.0",
     "psutil>=7.2.2",
+    "pyproj>=3.8.0",
+    "pystac>=1.15.2",
+    "pystac-client>=0.9.0",
+    "pyyaml>=6.0",
+    "rasterio>=1.5.2",
+    "rioxarray>=0.23.0",
+    "shapely",
+    "stac-geoparquet>=0.9.0",
+    "xarray>=2026.9.0",
 ]
 
 [project.scripts]
 flood-monitoring = "flood_monitoring.cli:main"
 
 [dependency-groups]
+# Every stage but load: eo-pipe (stack, despeckle, the sieve; it builds the GDAL bindings against the system GDAL),
+# eo-stac (download), platform-publish (export). Installed by default (see default-groups).
+full = [
+    "eo-pipe",
+    "eo-stac",
+    "platform-publish",
+]
 dev = [
     "pytest>=8.0",
 ]
@@ -39,6 +54,9 @@ notebook = [
 # eo-pipe pins the gdal Python bindings, which compile against the system
 # GDAL C library found through gdal-config on PATH. numpy must be present at
 # build time or the bindings are built without gdal_array.
+[tool.uv]
+default-groups = ["full", "dev"]
+
 [tool.uv.extra-build-dependencies]
 gdal = ["setuptools", "numpy"]
 

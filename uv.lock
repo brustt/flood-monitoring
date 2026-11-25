@@ -806,21 +806,32 @@ name = "flood-monitoring"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "eo-pipe" },
-    { name = "eo-stac" },
+    { name = "dask" },
     { name = "geopandas" },
+    { name = "netcdf4" },
+    { name = "numpy" },
     { name = "odc-stac" },
-    { name = "platform-publish" },
+    { name = "planetary-computer" },
     { name = "psutil" },
+    { name = "pyproj" },
+    { name = "pystac" },
     { name = "pystac-client" },
     { name = "pyyaml" },
+    { name = "rasterio" },
+    { name = "rioxarray" },
     { name = "shapely" },
     { name = "stac-geoparquet" },
+    { name = "xarray" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
+]
+full = [
+    { name = "eo-pipe" },
+    { name = "eo-stac" },
+    { name = "platform-publish" },
 ]
 notebook = [
     { name = "folium" },
@@ -833,20 +844,31 @@ notebook = [
 
 [package.metadata]
 requires-dist = [
-    { name = "eo-pipe", editable = "../eo-pipe" },
-    { name = "eo-stac", git = "https://github.com/brustt/eo-stac?branch=main" },
+    { name = "dask", specifier = ">=2026.8.0" },
     { name = "geopandas" },
+    { name = "netcdf4", specifier = ">=1.7.4" },
+    { name = "numpy", specifier = ">=2.5.4" },
     { name = "odc-stac", specifier = ">=0.5.3" },
-    { name = "platform-publish", git = "https://github.com/brustt/platform-publish?tag=v0.2.1" },
+    { name = "planetary-computer", specifier = ">=1.0.0" },
     { name = "psutil", specifier = ">=7.2.2" },
+    { name = "pyproj", specifier = ">=3.8.0" },
+    { name = "pystac", specifier = ">=1.15.2" },
     { name = "pystac-client", specifier = ">=0.9.0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "rasterio", specifier = ">=1.5.2" },
+    { name = "rioxarray", specifier = ">=0.23.0" },
     { name = "shapely" },
     { name = "stac-geoparquet", specifier = ">=0.9.0" },
+    { name = "xarray", specifier = ">=2026.9.0" },
 ]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8.0" }]
+full = [
+    { name = "eo-pipe", editable = "../eo-pipe" },
+    { name = "eo-stac", git = "https://github.com/brustt/eo-stac?branch=main" },
+    { name = "platform-publish", git = "https://github.com/brustt/platform-publish?tag=v0.2.1" },
+]
 notebook = [
     { name = "folium", specifier = ">=0.20.0" },
     { name = "ipykernel", specifier = ">=7.4.0" },
