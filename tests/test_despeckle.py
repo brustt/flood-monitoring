@@ -3,7 +3,7 @@ from dataclasses import replace
 import numpy as np
 import pytest
 import xarray as xr
-from eo_pipe.io.memory import ChunkPlan
+from flood_monitoring.chunks import ChunkPlan
 from eo_pipe.io.speckle import lee_block, quegan_block
 from shapely.geometry import box
 

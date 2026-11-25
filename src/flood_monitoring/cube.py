@@ -6,7 +6,9 @@ float32 dB with NaN for nodata. Only the speckle filters need linear power: they
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import os
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -15,11 +17,28 @@ import netCDF4
 import numpy as np
 import rioxarray  # noqa: F401  (registers the .rio accessor)
 import xarray as xr
-from eo_pipe.io.output_types import atomic_path
 from xarray.backends.netCDF4_ import NETCDF4_PYTHON_LOCK
 
 DB_SCALE = 0.01  # dB per stored unit
 DB_FILL = -32768  # stored nodata
+# Converting to dB holds, per pixel and date and variable, the power, the dB and their working copies: 8 B, twice
+# the stack's own. Chunks are planned for it once, so one chunk side serves both.
+BYTES_PER_DATE_VAR = 8
+
+
+@contextmanager
+def atomic_path(path: Path) -> Iterator[Path]:
+    """Yield a temporary ``<path>.part`` to write to; rename it onto *path* on success.
+
+    A failed write never leaves *path* or the temporary file behind. Same as eo-pipe's, which the load stage must not
+    import (#43).
+    """
+    tmp = path.with_name(path.name + ".part")
+    try:
+        yield tmp
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def encode_db(db: np.ndarray) -> np.ndarray:

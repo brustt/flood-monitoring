@@ -5,12 +5,12 @@ import numpy as np
 import pytest
 import rasterio
 import rasterio.env
-from eo_pipe.io.memory import ChunkPlan
 from eo_pipe.pipeline import PipelineComposition
 from rasterio.transform import from_origin
 
 import reference_inputs as ri
 from flood_monitoring import chunks, composite, event, flood_extent, merge_stage, stack
+from flood_monitoring.chunks import ChunkPlan
 
 
 def cube(tmp_path, size=48, dates=12, chunk=16):
@@ -178,3 +178,21 @@ def test_stages_plan_with_config_budget(tmp_path, monkeypatch, stage):
             if name == stage:
                 break
     assert budgets == [777]
+
+
+@pytest.mark.parametrize("budget", [64.0, 512.0, 4096.0, 16384.0])
+@pytest.mark.parametrize("bytes_per_pixel", [9.0, 280.0, 1120.0])
+@pytest.mark.parametrize("shape", [(40, 30), (7207, 15020)])
+def test_the_planner_copy_matches_eo_pipe(budget, bytes_per_pixel, shape):
+    """chunks keeps a copy of eo-pipe's planner for the light install (#43); it must not drift."""
+    memory = pytest.importorskip("eo_pipe.io.memory")
+    ours, theirs = chunks.plan_chunks(budget, bytes_per_pixel, *shape), memory.plan_chunks(budget, bytes_per_pixel, *shape)
+    assert (ours.side, ours.workers) == (theirs.side, theirs.workers)
+    for side in (16, 256, 512):
+        try:
+            expected = memory.workers_for(budget, bytes_per_pixel, side)
+        except ValueError:
+            with pytest.raises(ValueError):
+                chunks.workers_for(budget, bytes_per_pixel, side)
+        else:
+            assert chunks.workers_for(budget, bytes_per_pixel, side) == expected

@@ -31,13 +31,14 @@ def _pyproj_data() -> str | None:
     return str(path) if path.is_dir() else None
 
 
-def _gdal_data() -> str:
+def _gdal_data() -> str | None:
+    """Data folder of the system GDAL; None without one (light install, #43: rasterio's wheel brings its own)."""
     exe = shutil.which("gdal-config")
     if exe:
         out = subprocess.run([exe, "--datadir"], capture_output=True, text=True)
         if out.returncode == 0 and Path(out.stdout.strip()).is_dir():
             return out.stdout.strip()
-    return _FALLBACK_GDAL_DATA
+    return _FALLBACK_GDAL_DATA if Path(_FALLBACK_GDAL_DATA).is_dir() else None
 
 
 def clean_environment(env: dict[str, str]) -> dict[str, str]:
@@ -46,7 +47,11 @@ def clean_environment(env: dict[str, str]) -> dict[str, str]:
     proj = _pyproj_data()
     if proj:
         clean["PROJ_DATA"] = proj
-    clean["GDAL_DATA"] = _gdal_data()
+    gdal_data = _gdal_data()
+    if gdal_data:
+        clean["GDAL_DATA"] = gdal_data
+    else:  # never keep a shell's (OTB's) GDAL_DATA
+        clean.pop("GDAL_DATA", None)
     return clean
 
 

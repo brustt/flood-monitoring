@@ -1,5 +1,8 @@
 """The load stage on synthetic COGs with file:// Items, against the stack stage on the same files."""
 
+import pickle
+import subprocess
+import sys
 from collections import Counter
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
@@ -171,3 +174,37 @@ def test_a_chunk_that_keeps_failing_fails_the_stage_and_leaves_no_cube(series, t
     with pytest.raises(RuntimeError, match="failed 4 times"):
         run_load(config, items, tmp_path, monkeypatch)
     assert not EventPaths("ev", tmp_path).cube.exists()
+
+
+LIGHT_RUN = """
+import pickle, sys
+# The light install (#43) has none of these: block them, so importing one fails as it would on the VPS
+FULL = ("eo_pipe", "eo_stac", "osgeo", "platform_publish")
+for name in FULL:
+    sys.modules[name] = None
+from flood_monitoring import cli, load
+from flood_monitoring.paths import EventPaths
+
+config, items, root = pickle.loads(open(sys.argv[1], "rb").read())
+load.search = lambda config: items
+load.COG_BLOCK = 64
+paths = EventPaths("ev", root)
+cli.run_stages(config, paths, ["load"])
+try:
+    cli.run_stages(config, paths, ["despeckle"])
+except RuntimeError as exc:
+    print("FULL INSTALL:", exc)
+"""
+
+
+def test_the_load_stage_runs_without_the_full_install(series, tmp_path):
+    """eo-pipe, eo-stac, the system GDAL bindings and platform-publish blocked: the CLI runs load, and a stage that
+    needs them says so."""
+    config, items = series
+    args = tmp_path / "args.pkl"
+    args.write_bytes(pickle.dumps((config, items, tmp_path / "light")))
+    out = subprocess.run([sys.executable, "-c", LIGHT_RUN, str(args)], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    assert "FULL INSTALL: the despeckle stage needs the full install (eo_pipe" in out.stdout
+    with xr.open_dataset(EventPaths("ev", tmp_path / "light").cube) as cube:
+        assert cube.sizes["time"] == 3 and cube["VV"].encoding["dtype"] == "int16"

@@ -24,6 +24,34 @@ Events are described in `events/<event>.yaml`. Data is kept outside the repo und
 
 `load` builds the Cube straight from the Sentinel-1 RTC COGs of the Planetary Computer (odc-stac): it reads only the chunks of the Area of Interest window and leaves no raw files. `download` then `stack` build the same Cube from raw Subsets; they are out of the default run and kept, through `--stage`, until `load` is validated on Charente.
 
+## Light install: the load stage on another machine
+
+`load` is network-bound: Planetary Computer reads at ~5 MB/s from home and ~45 MB/s from the OVH VPS (#42,
+`experiments/pc_speed.sh`). It runs on a light install, wheels only, with no eo-pipe, eo-stac, platform-publish or
+system GDAL (`uv sync` keeps installing everything by default through the `full` dependency group). Build the Cubes
+there and copy them home, where the other stages run:
+
+```bash
+# on the VPS, once: uv, the repo, the light install
+curl -LsSf https://astral.sh/uv/install.sh | sh
+git clone -b dev https://github.com/brustt/flood-monitoring.git && cd flood-monitoring
+uv sync --frozen --no-dev --no-group full
+# a polygon Area of Interest is a file outside the repo: copy it to the same relative path, e.g. from home
+#   rsync -P ~/Documents/Projects/data/flood-monitoring/external/hydro_major_buffer5000_simplified.gpkg \
+#            vps:~/data/flood-monitoring/external/
+# lower processing.memory_budget_mb in events/<event>.yaml below the VPS's free memory (e.g. 3072 on 8 GB)
+
+# in tmux, off-peak: the VPS also serves the Platform
+FLOOD_MONITORING_DATA_ROOT=~/data/flood-monitoring nice -n 19 .venv/bin/flood-monitoring run <event> --stage load
+
+# at home: copy the Cubes (every orbit's interim/ folder), then run the rest; load skips the Cubes that exist
+rsync -P -r vps:~/data/flood-monitoring/interim/<event>/ ~/Documents/Projects/data/flood-monitoring/interim/<event>/
+uv run flood-monitoring run <event>
+```
+
+Call `.venv/bin/flood-monitoring` (or `uv run --no-sync`), not `uv run`: `uv run` syncs the default groups and would
+install the full set. Any other stage on the light install stops with `the <stage> stage needs the full install`.
+
 ## Documentation
 
 - [`docs/overview.md`](docs/overview.md): the workflow, configuration, skip/resume rules, file layout.
@@ -55,4 +83,4 @@ Each of `event`, `flood-extent`, `composite` and `merge` first deletes its own o
 
 ## GDAL/PROJ environment
 
-Shells that export OTB's `PROJ_LIB`, `GDAL_DATA`, `LD_LIBRARY_PATH`, `GDAL_DRIVER_PATH` or `PYTHONPATH` break GDAL here (`proj.db contains DATABASE.LAYOUT.VERSION.MINOR = 2 whereas a number >= 6 is expected`). The fix lives in the CLI entry point (`src/flood_monitoring/_env.py`): before any stage runs, `flood-monitoring` re-executes itself once with `PYTHONPATH`, `LD_LIBRARY_PATH`, `GDAL_DRIVER_PATH` and `PROJ_LIB` removed, `PROJ_DATA` set to the venv's `pyproj/proj_dir/share/proj` and `GDAL_DATA` set to `gdal-config --datadir`. It must be a re-exec because `LD_LIBRARY_PATH` is read by the dynamic loader at process start. No manual overrides are needed.
+Shells that export OTB's `PROJ_LIB`, `GDAL_DATA`, `LD_LIBRARY_PATH`, `GDAL_DRIVER_PATH` or `PYTHONPATH` break GDAL here (`proj.db contains DATABASE.LAYOUT.VERSION.MINOR = 2 whereas a number >= 6 is expected`). The fix lives in the CLI entry point (`src/flood_monitoring/_env.py`): before any stage runs, `flood-monitoring` re-executes itself once with `PYTHONPATH`, `LD_LIBRARY_PATH`, `GDAL_DRIVER_PATH` and `PROJ_LIB` removed, `PROJ_DATA` set to the venv's `pyproj/proj_dir/share/proj` and `GDAL_DATA` set to `gdal-config --datadir` (removed when there is no system GDAL, as on the light install: rasterio's wheel brings its own data). It must be a re-exec because `LD_LIBRARY_PATH` is read by the dynamic loader at process start. No manual overrides are needed.
