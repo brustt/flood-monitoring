@@ -13,7 +13,7 @@ One real-world flood bounded in place and time, named `<place>-<yyyy-mm>` (e.g. 
 _Avoid_: case, run, study area
 
 **Area of Interest**:
-The rectangle on the ground an Event is studied over. All rasters of an Event cover it.
+The area on the ground an Event is studied over: a rectangle, or a polygon such as a buffer around a river. All rasters of an Event cover its bounding box; with a polygon, only the pixels near it are read and stored, the others are nodata.
 _Avoid_: bbox, footprint, zone
 
 **Acquisition**:
@@ -21,7 +21,7 @@ One Sentinel-1 pass over the Area of Interest, in both polarizations (VV and VH)
 _Avoid_: image, scene, product
 
 **Series**:
-All Acquisitions of an Event, from the same orbit, in time order. It starts well before the flood so that normal conditions are known.
+All Acquisitions of an Event from one relative orbit, in time order. It starts well before the flood so that normal conditions are known. An Area of Interest too large for one swath has one Series per relative orbit, processed separately and merged on results (ADR-0001).
 _Avoid_: stack (the file), time series (the plot)
 
 **Cube**:
@@ -72,13 +72,13 @@ _Avoid_: RGB, false colour, quicklook
 
 ## Relationships
 
-- An **Event** has one **Area of Interest** and one **Series**
+- An **Event** has one **Area of Interest** and one **Series** per relative orbit (usually one)
 - A **Series** is held as a **Cube**; each time step is one **Acquisition**
 - The **Baseline** comes from the Acquisitions before the **Event Start**; the **Drop** is measured against it
 - Each **Post-event Acquisition** gives one **Water Mask**
 - **Water Footprint** = union of post-event **Water Masks**
 - **Flood Extent** = **Water Footprint** minus **Permanent Water**
-- The **Water Footprint** and the two **Composites** are the **Layers** of the Event's **Published Result**
+- The **Water Footprint**, the two **Composites** and their VV bands are the **Layers** of the Event's **Published Result**; a multi-orbit Event adds the Orbit Map, the source orbit of each Composite pixel
 
 ## Flagged ambiguities
 
