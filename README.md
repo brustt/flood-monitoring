@@ -7,7 +7,7 @@ Open water reflects radar away, so flooded pixels turn dark. The pipeline downlo
 ## Quick start
 
 ```bash
-uv sync
+uv sync                                                    # full install, see docs/install.md
 uv run flood-monitoring show saintes-2026-02             # config and resolved paths
 uv run flood-monitoring run saintes-2026-02              # load to export
 uv run flood-monitoring run saintes-2026-02 --stage event # one stage
@@ -24,36 +24,9 @@ Events are described in `events/<event>.yaml`. Data is kept outside the repo und
 
 `load` builds the Cube straight from the Sentinel-1 RTC COGs of the Planetary Computer (odc-stac): it reads only the chunks of the Area of Interest window and leaves no raw files. `download` then `stack` build the same Cube from raw Subsets; they are out of the default run and kept, through `--stage`, until `load` is validated on Charente.
 
-## Light install: the load stage on another machine
-
-`load` is network-bound: Planetary Computer reads at ~5 MB/s from home and ~45 MB/s from the OVH VPS (#42,
-`experiments/pc_speed.sh`). It runs on a light install, wheels only, with no eo-pipe, eo-stac, platform-publish or
-system GDAL (`uv sync` keeps installing everything by default through the `full` dependency group). Build the Cubes
-there and copy them home, where the other stages run:
-
-```bash
-# on the VPS, once: uv, the repo, the light install
-curl -LsSf https://astral.sh/uv/install.sh | sh
-git clone -b dev https://github.com/brustt/flood-monitoring.git && cd flood-monitoring
-uv sync --frozen --no-dev --no-group full
-# a polygon Area of Interest is a file outside the repo: copy it to the same relative path, e.g. from home
-#   rsync -P ~/Documents/Projects/data/flood-monitoring/external/hydro_major_buffer5000_simplified.gpkg \
-#            vps:~/data/flood-monitoring/external/
-# lower processing.memory_budget_mb in events/<event>.yaml below the VPS's free memory (e.g. 3072 on 8 GB)
-
-# in tmux, off-peak: the VPS also serves the Platform
-FLOOD_MONITORING_DATA_ROOT=~/data/flood-monitoring nice -n 19 .venv/bin/flood-monitoring run <event> --stage load
-
-# at home: copy the Cubes (every orbit's interim/ folder), then run the rest; load skips the Cubes that exist
-rsync -P -r vps:~/data/flood-monitoring/interim/<event>/ ~/Documents/Projects/data/flood-monitoring/interim/<event>/
-uv run flood-monitoring run <event>
-```
-
-Call `.venv/bin/flood-monitoring` (or `uv run --no-sync`), not `uv run`: `uv run` syncs the default groups and would
-install the full set. Any other stage on the light install stops with `the <stage> stage needs the full install`.
-
 ## Documentation
 
+- [`docs/install.md`](docs/install.md): full install, and the light install that runs `load` on another machine (the VPS).
 - [`docs/overview.md`](docs/overview.md): the workflow, configuration, skip/resume rules, file layout.
 - Stage by stage: [ingest](docs/pipeline/1-ingest.md) (download, stack, despeckle), [detection](docs/pipeline/2-detection.md) (event, flood-extent), [composite](docs/pipeline/3-composite.md), [merge](docs/pipeline/4-merge.md), [export](docs/pipeline/5-export.md).
 - [`CONTEXT.md`](CONTEXT.md): glossary (Event, Series, Cube, Baseline, Drop, Flood Extent…).
